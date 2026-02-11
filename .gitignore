@@ -1,0 +1,18 @@
+# Book projects (user output, not part of the skill)
+books/
+
+# Derived from EPUBs (can re-extract/rebuild)
+extracted/
+epub-build/
+
+# Python
+__pycache__/
+*.pyc
+
+# Audio files
+*.m4b
+*.aac
+*.m4a
+
+# OS
+.DS_Store

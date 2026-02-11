@@ -1,0 +1,20 @@
+{
+  "working_dir": "~/Documents",
+  "epub_utils_path": "EPUB_UTILS_PATH_PLACEHOLDER",
+  "epub_source": {
+    "type": "local",
+    "calibre_ssh": "",
+    "calibre_library_path": ""
+  },
+  "upload": {
+    "enabled": false,
+    "calibre_ssh": "",
+    "calibre_library_path": "",
+    "kepub": false
+  },
+  "audiobook_sync": {
+    "enabled": false,
+    "ssh_host": "",
+    "remote_path": ""
+  }
+}
