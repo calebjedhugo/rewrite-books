@@ -1,0 +1,610 @@
+{
+  "_metadata": {
+    "content_dir": "OEBPS",
+    "heading_tag": "h2",
+    "subtitle_tag": null,
+    "boundary_pattern": null,
+    "spillover": {},
+    "opf_file": "content.opf",
+    "ncx_file": "toc.ncx",
+    "before_spine_idref": "pg-footer"
+  },
+  "ch01": {
+    "chapter_number": 1,
+    "title": "CHAPTER I",
+    "subtitle": "A SHIFTING REEF",
+    "source_file": "4072747583742559894_164-h-1.htm.xhtml",
+    "line_range": [
+      23,
+      251
+    ],
+    "heading_id": "pgepubid00004",
+    "anchor_id": "chap01",
+    "word_count": 1965
+  },
+  "ch02": {
+    "chapter_number": 2,
+    "title": "CHAPTER II",
+    "subtitle": "PRO AND CON",
+    "source_file": "4072747583742559894_164-h-2.htm.xhtml",
+    "line_range": [
+      19,
+      234
+    ],
+    "heading_id": "pgepubid00005",
+    "anchor_id": "chap02",
+    "word_count": 1659
+  },
+  "ch03": {
+    "chapter_number": 3,
+    "title": "CHAPTER III",
+    "subtitle": "I FORM MY RESOLUTION",
+    "source_file": "4072747583742559894_164-h-3.htm.xhtml",
+    "line_range": [
+      19,
+      271
+    ],
+    "heading_id": "pgepubid00006",
+    "anchor_id": "chap03",
+    "word_count": 1354
+  },
+  "ch04": {
+    "chapter_number": 4,
+    "title": "CHAPTER IV",
+    "subtitle": "NED LAND",
+    "source_file": "4072747583742559894_164-h-4.htm.xhtml",
+    "line_range": [
+      19,
+      293
+    ],
+    "heading_id": "pgepubid00007",
+    "anchor_id": "chap04",
+    "word_count": 1927
+  },
+  "ch05": {
+    "chapter_number": 5,
+    "title": "CHAPTER V",
+    "subtitle": "AT A VENTURE",
+    "source_file": "4072747583742559894_164-h-5.htm.xhtml",
+    "line_range": [
+      19,
+      261
+    ],
+    "heading_id": "pgepubid00008",
+    "anchor_id": "chap05",
+    "word_count": 1685
+  },
+  "ch06": {
+    "chapter_number": 6,
+    "title": "CHAPTER VI",
+    "subtitle": "AT FULL STEAM",
+    "source_file": "4072747583742559894_164-h-6.htm.xhtml",
+    "line_range": [
+      19,
+      466
+    ],
+    "heading_id": "pgepubid00009",
+    "anchor_id": "chap06",
+    "word_count": 2392
+  },
+  "ch07": {
+    "chapter_number": 7,
+    "title": "CHAPTER VII",
+    "subtitle": "AN UNKNOWN SPECIES OF WHALE",
+    "source_file": "4072747583742559894_164-h-7.htm.xhtml",
+    "line_range": [
+      19,
+      400
+    ],
+    "heading_id": "pgepubid00010",
+    "anchor_id": "chap07",
+    "word_count": 1968
+  },
+  "ch08": {
+    "chapter_number": 8,
+    "title": "CHAPTER VIII",
+    "subtitle": "MOBILIS IN MOBILI",
+    "source_file": "4072747583742559894_164-h-8.htm.xhtml",
+    "line_range": [
+      19,
+      353
+    ],
+    "heading_id": "pgepubid00011",
+    "anchor_id": "chap08",
+    "word_count": 1987
+  },
+  "ch09": {
+    "chapter_number": 9,
+    "title": "CHAPTER IX",
+    "subtitle": "NED LAND’S TEMPERS",
+    "source_file": "4072747583742559894_164-h-9.htm.xhtml",
+    "line_range": [
+      19,
+      176
+    ],
+    "heading_id": "pgepubid00012",
+    "anchor_id": "chap09",
+    "word_count": 873
+  },
+  "ch10": {
+    "chapter_number": 10,
+    "title": "CHAPTER X",
+    "subtitle": "THE MAN OF THE SEAS",
+    "source_file": "4072747583742559894_164-h-10.htm.xhtml",
+    "line_range": [
+      19,
+      757
+    ],
+    "heading_id": "pgepubid00013",
+    "anchor_id": "chap10",
+    "word_count": 4713
+  },
+  "ch11": {
+    "chapter_number": 11,
+    "title": "CHAPTER XI",
+    "subtitle": "ALL BY ELECTRICITY",
+    "source_file": "4072747583742559894_164-h-11.htm.xhtml",
+    "line_range": [
+      19,
+      267
+    ],
+    "heading_id": "pgepubid00014",
+    "anchor_id": "chap11",
+    "word_count": 1602
+  },
+  "ch12": {
+    "chapter_number": 12,
+    "title": "CHAPTER XII",
+    "subtitle": "SOME FIGURES",
+    "source_file": "4072747583742559894_164-h-12.htm.xhtml",
+    "line_range": [
+      19,
+      312
+    ],
+    "heading_id": "pgepubid00015",
+    "anchor_id": "chap12",
+    "word_count": 1855
+  },
+  "ch13": {
+    "chapter_number": 13,
+    "title": "CHAPTER XIII",
+    "subtitle": "THE BLACK RIVER",
+    "source_file": "4072747583742559894_164-h-13.htm.xhtml",
+    "line_range": [
+      19,
+      307
+    ],
+    "heading_id": "pgepubid00016",
+    "anchor_id": "chap13",
+    "word_count": 2002
+  },
+  "ch14": {
+    "chapter_number": 14,
+    "title": "CHAPTER XIV",
+    "subtitle": "A NOTE OF INVITATION",
+    "source_file": "4072747583742559894_164-h-14.htm.xhtml",
+    "line_range": [
+      19,
+      415
+    ],
+    "heading_id": "pgepubid00017",
+    "anchor_id": "chap14",
+    "word_count": 2311
+  },
+  "ch15": {
+    "chapter_number": 15,
+    "title": "CHAPTER XV",
+    "subtitle": "A WALK ON THE BOTTOM OF THE SEA",
+    "source_file": "4072747583742559894_164-h-15.htm.xhtml",
+    "line_range": [
+      19,
+      266
+    ],
+    "heading_id": "pgepubid00018",
+    "anchor_id": "chap15",
+    "word_count": 1842
+  },
+  "ch16": {
+    "chapter_number": 16,
+    "title": "CHAPTER XVI",
+    "subtitle": "A SUBMARINE FOREST",
+    "source_file": "4072747583742559894_164-h-16.htm.xhtml",
+    "line_range": [
+      19,
+      274
+    ],
+    "heading_id": "pgepubid00019",
+    "anchor_id": "chap16",
+    "word_count": 2294
+  },
+  "ch17": {
+    "chapter_number": 17,
+    "title": "CHAPTER XVII",
+    "subtitle": "FOUR THOUSAND LEAGUES UNDER THE PACIFIC",
+    "source_file": "4072747583742559894_164-h-17.htm.xhtml",
+    "line_range": [
+      19,
+      245
+    ],
+    "heading_id": "pgepubid00020",
+    "anchor_id": "chap17",
+    "word_count": 1655
+  },
+  "ch18": {
+    "chapter_number": 18,
+    "title": "CHAPTER XVIII",
+    "subtitle": "VANIKORO",
+    "source_file": "4072747583742559894_164-h-18.htm.xhtml",
+    "line_range": [
+      19,
+      390
+    ],
+    "heading_id": "pgepubid00021",
+    "anchor_id": "chap18",
+    "word_count": 2510
+  },
+  "ch19": {
+    "chapter_number": 19,
+    "title": "CHAPTER XIX",
+    "subtitle": "TORRES STRAITS",
+    "source_file": "4072747583742559894_164-h-19.htm.xhtml",
+    "line_range": [
+      19,
+      346
+    ],
+    "heading_id": "pgepubid00022",
+    "anchor_id": "chap19",
+    "word_count": 2022
+  },
+  "ch20": {
+    "chapter_number": 20,
+    "title": "CHAPTER XX",
+    "subtitle": "A FEW DAYS ON LAND",
+    "source_file": "4072747583742559894_164-h-20.htm.xhtml",
+    "line_range": [
+      19,
+      481
+    ],
+    "heading_id": "pgepubid00023",
+    "anchor_id": "chap20",
+    "word_count": 2557
+  },
+  "ch21": {
+    "chapter_number": 21,
+    "title": "CHAPTER XXI",
+    "subtitle": "CAPTAIN NEMO’S THUNDERBOLT",
+    "source_file": "4072747583742559894_164-h-21.htm.xhtml",
+    "line_range": [
+      19,
+      618
+    ],
+    "heading_id": "pgepubid00024",
+    "anchor_id": "chap21",
+    "word_count": 3074
+  },
+  "ch22": {
+    "chapter_number": 22,
+    "title": "CHAPTER XXII",
+    "subtitle": "“ÆGRI SOMNIA”",
+    "source_file": "4072747583742559894_164-h-22.htm.xhtml",
+    "line_range": [
+      19,
+      335
+    ],
+    "heading_id": "pgepubid00025",
+    "anchor_id": "chap22",
+    "word_count": 2180
+  },
+  "ch23": {
+    "chapter_number": 23,
+    "title": "CHAPTER XXIII",
+    "subtitle": "THE CORAL KINGDOM",
+    "source_file": "4072747583742559894_164-h-23.htm.xhtml",
+    "line_range": [
+      19,
+      394
+    ],
+    "heading_id": "pgepubid00026",
+    "anchor_id": "chap23",
+    "word_count": 2115
+  },
+  "ch24": {
+    "chapter_number": 24,
+    "title": "CHAPTER I",
+    "subtitle": "THE INDIAN OCEAN",
+    "source_file": "4072747583742559894_164-h-24.htm.xhtml",
+    "line_range": [
+      23,
+      316
+    ],
+    "heading_id": "pgepubid00028",
+    "anchor_id": "chap24",
+    "word_count": 2484
+  },
+  "ch25": {
+    "chapter_number": 25,
+    "title": "CHAPTER II",
+    "subtitle": "A NOVEL PROPOSAL OF CAPTAIN NEMO’S",
+    "source_file": "4072747583742559894_164-h-25.htm.xhtml",
+    "line_range": [
+      19,
+      337
+    ],
+    "heading_id": "pgepubid00029",
+    "anchor_id": "chap25",
+    "word_count": 1501
+  },
+  "ch26": {
+    "chapter_number": 26,
+    "title": "CHAPTER III",
+    "subtitle": "A PEARL OF TEN MILLIONS",
+    "source_file": "4072747583742559894_164-h-26.htm.xhtml",
+    "line_range": [
+      19,
+      482
+    ],
+    "heading_id": "pgepubid00030",
+    "anchor_id": "chap26",
+    "word_count": 3220
+  },
+  "ch27": {
+    "chapter_number": 27,
+    "title": "CHAPTER IV",
+    "subtitle": "THE RED SEA",
+    "source_file": "4072747583742559894_164-h-27.htm.xhtml",
+    "line_range": [
+      19,
+      519
+    ],
+    "heading_id": "pgepubid00031",
+    "anchor_id": "chap27",
+    "word_count": 3097
+  },
+  "ch28": {
+    "chapter_number": 28,
+    "title": "CHAPTER V",
+    "subtitle": "THE ARABIAN TUNNEL",
+    "source_file": "4072747583742559894_164-h-28.htm.xhtml",
+    "line_range": [
+      19,
+      417
+    ],
+    "heading_id": "pgepubid00032",
+    "anchor_id": "chap28",
+    "word_count": 2251
+  },
+  "ch29": {
+    "chapter_number": 29,
+    "title": "CHAPTER VI",
+    "subtitle": "THE GRECIAN ARCHIPELAGO",
+    "source_file": "4072747583742559894_164-h-29.htm.xhtml",
+    "line_range": [
+      19,
+      602
+    ],
+    "heading_id": "pgepubid00033",
+    "anchor_id": "chap29",
+    "word_count": 2860
+  },
+  "ch30": {
+    "chapter_number": 30,
+    "title": "CHAPTER VII",
+    "subtitle": "THE MEDITERRANEAN IN FORTY-EIGHT HOURS",
+    "source_file": "4072747583742559894_164-h-30.htm.xhtml",
+    "line_range": [
+      19,
+      187
+    ],
+    "heading_id": "pgepubid00034",
+    "anchor_id": "chap30",
+    "word_count": 1043
+  },
+  "ch31": {
+    "chapter_number": 31,
+    "title": "CHAPTER VIII",
+    "subtitle": "VIGO BAY",
+    "source_file": "4072747583742559894_164-h-31.htm.xhtml",
+    "line_range": [
+      19,
+      471
+    ],
+    "heading_id": "pgepubid00035",
+    "anchor_id": "chap31",
+    "word_count": 3088
+  },
+  "ch32": {
+    "chapter_number": 32,
+    "title": "CHAPTER IX",
+    "subtitle": "A VANISHED CONTINENT",
+    "source_file": "4072747583742559894_164-h-32.htm.xhtml",
+    "line_range": [
+      19,
+      409
+    ],
+    "heading_id": "pgepubid00036",
+    "anchor_id": "chap32",
+    "word_count": 2778
+  },
+  "ch33": {
+    "chapter_number": 33,
+    "title": "CHAPTER X",
+    "subtitle": "THE SUBMARINE COAL-MINES",
+    "source_file": "4072747583742559894_164-h-33.htm.xhtml",
+    "line_range": [
+      19,
+      372
+    ],
+    "heading_id": "pgepubid00037",
+    "anchor_id": "chap33",
+    "word_count": 2577
+  },
+  "ch34": {
+    "chapter_number": 34,
+    "title": "CHAPTER XI",
+    "subtitle": "THE SARGASSO SEA",
+    "source_file": "4072747583742559894_164-h-34.htm.xhtml",
+    "line_range": [
+      19,
+      191
+    ],
+    "heading_id": "pgepubid00038",
+    "anchor_id": "chap34",
+    "word_count": 1608
+  },
+  "ch35": {
+    "chapter_number": 35,
+    "title": "CHAPTER XII",
+    "subtitle": "CACHALOTS AND WHALES",
+    "source_file": "4072747583742559894_164-h-35.htm.xhtml",
+    "line_range": [
+      19,
+      471
+    ],
+    "heading_id": "pgepubid00039",
+    "anchor_id": "chap35",
+    "word_count": 2763
+  },
+  "ch36": {
+    "chapter_number": 36,
+    "title": "CHAPTER XIII",
+    "subtitle": "THE ICEBERG",
+    "source_file": "4072747583742559894_164-h-36.htm.xhtml",
+    "line_range": [
+      19,
+      383
+    ],
+    "heading_id": "pgepubid00040",
+    "anchor_id": "chap36",
+    "word_count": 2996
+  },
+  "ch37": {
+    "chapter_number": 37,
+    "title": "CHAPTER XIV",
+    "subtitle": "THE SOUTH POLE",
+    "source_file": "4072747583742559894_164-h-37.htm.xhtml",
+    "line_range": [
+      19,
+      441
+    ],
+    "heading_id": "pgepubid00041",
+    "anchor_id": "chap37",
+    "word_count": 3347
+  },
+  "ch38": {
+    "chapter_number": 38,
+    "title": "CHAPTER XV",
+    "subtitle": "ACCIDENT OR INCIDENT?",
+    "source_file": "4072747583742559894_164-h-38.htm.xhtml",
+    "line_range": [
+      19,
+      386
+    ],
+    "heading_id": "pgepubid00042",
+    "anchor_id": "chap38",
+    "word_count": 1997
+  },
+  "ch39": {
+    "chapter_number": 39,
+    "title": "CHAPTER XVI",
+    "subtitle": "WANT OF AIR",
+    "source_file": "4072747583742559894_164-h-39.htm.xhtml",
+    "line_range": [
+      19,
+      420
+    ],
+    "heading_id": "pgepubid00043",
+    "anchor_id": "chap39",
+    "word_count": 3200
+  },
+  "ch40": {
+    "chapter_number": 40,
+    "title": "CHAPTER XVII",
+    "subtitle": "FROM CAPE HORN TO THE AMAZON",
+    "source_file": "4072747583742559894_164-h-40.htm.xhtml",
+    "line_range": [
+      19,
+      261
+    ],
+    "heading_id": "pgepubid00044",
+    "anchor_id": "chap40",
+    "word_count": 2302
+  },
+  "ch41": {
+    "chapter_number": 41,
+    "title": "CHAPTER XVIII",
+    "subtitle": "THE POULPS",
+    "source_file": "4072747583742559894_164-h-41.htm.xhtml",
+    "line_range": [
+      19,
+      419
+    ],
+    "heading_id": "pgepubid00045",
+    "anchor_id": "chap41",
+    "word_count": 2322
+  },
+  "ch42": {
+    "chapter_number": 42,
+    "title": "CHAPTER XIX",
+    "subtitle": "THE GULF STREAM",
+    "source_file": "4072747583742559894_164-h-42.htm.xhtml",
+    "line_range": [
+      19,
+      342
+    ],
+    "heading_id": "pgepubid00046",
+    "anchor_id": "chap42",
+    "word_count": 2595
+  },
+  "ch43": {
+    "chapter_number": 43,
+    "title": "CHAPTER XX",
+    "subtitle": "FROM LATITUDE 47° 24′ TO LONGITUDE 17° 28′",
+    "source_file": "4072747583742559894_164-h-43.htm.xhtml",
+    "line_range": [
+      19,
+      214
+    ],
+    "heading_id": "pgepubid00047",
+    "anchor_id": "chap43",
+    "word_count": 1879
+  },
+  "ch44": {
+    "chapter_number": 44,
+    "title": "CHAPTER XXI",
+    "subtitle": "A HECATOMB",
+    "source_file": "4072747583742559894_164-h-44.htm.xhtml",
+    "line_range": [
+      19,
+      416
+    ],
+    "heading_id": "pgepubid00048",
+    "anchor_id": "chap44",
+    "word_count": 2860
+  },
+  "ch45": {
+    "chapter_number": 45,
+    "title": "CHAPTER XXII",
+    "subtitle": "THE LAST WORDS OF CAPTAIN NEMO",
+    "source_file": "4072747583742559894_164-h-45.htm.xhtml",
+    "line_range": [
+      19,
+      324
+    ],
+    "heading_id": "pgepubid00049",
+    "anchor_id": "chap45",
+    "word_count": 2305
+  },
+  "ch46": {
+    "chapter_number": 46,
+    "title": "CHAPTER XXIII",
+    "subtitle": "CONCLUSION",
+    "source_file": "4072747583742559894_164-h-46.htm.xhtml",
+    "line_range": [
+      19,
+      79
+    ],
+    "heading_id": "pgepubid00050",
+    "anchor_id": "chap46",
+    "word_count": 445
+  }
+}

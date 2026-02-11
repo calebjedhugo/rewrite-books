@@ -131,6 +131,16 @@ Each book project gets its own directory under `working_dir`:
     Book Title (rewritten).epub
 ```
 
+## Example output
+
+The `examples/` directory contains sample output from a completed run on *Twenty Thousand Leagues Under the Sea*. It includes:
+
+- **Global files**: style guide, chapter bible, chapter map, progress tracker, front matter, high-level reviews
+- **Chapter 1**: the full set of per-chapter artifacts (original text, rewrite, footnotes, line-edit feedback, footnote verification, status)
+- **Final EPUB**: the reassembled book with all 46 chapters rewritten and 214 editorial footnotes
+
+This gives you a concrete picture of what the pipeline produces before running it yourself.
+
 ## epub-utils
 
 The `epub-utils/` directory contains a standalone Python library (stdlib only, no dependencies) that handles EPUB assembly. Key features:

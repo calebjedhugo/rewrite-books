@@ -1,0 +1,23 @@
+{
+  "verdict": "has_issues",
+  "issues": [
+    {
+      "quote": "Not the grinding impact of a collision. Something had *struck* her",
+      "intended_reading": "The blow was sharp and precise, unlike a typical collision with a reef or rock.",
+      "plausible_misreading": "A reader could parse 'Not the grinding impact of a collision' as negating the previous sentence -- i.e., the hull did NOT actually receive a blow -- before the next sentence corrects course. The fragment structure creates a momentary false reading.",
+      "suggestion": "Integrate the clarification: 'Not the grinding scrape of a reef or collision, but something sharp and precise -- something pointed and penetrating.'"
+    },
+    {
+      "quote": "Seawater was pouring into the fifth compartment with alarming force. The engines were stopped.",
+      "intended_reading": "Captain Anderson ordered the engines stopped as a damage-control measure.",
+      "plausible_misreading": "The passive 'The engines were stopped' immediately following flooding reads as if the flooding caused the engines to fail, rather than a deliberate command decision. This undercuts Anderson's competence in the scene.",
+      "suggestion": "Make the agency explicit: 'Anderson ordered the engines stopped.' or 'The captain ordered the engines cut.'"
+    },
+    {
+      "quote": "whatever had done the piercing had then withdrawn by some reverse motion that no one could explain",
+      "intended_reading": "The object that punctured the hull pulled itself back out, which is mechanically baffling.",
+      "plausible_misreading": "'Reverse motion' could be read as the ship itself moving backward (reversing engines) rather than the penetrating object withdrawing. The phrase 'no one could explain' then seems to apply to the ship's movement rather than the object's behavior.",
+      "suggestion": "Clarify the subject: 'whatever had done the piercing had then pulled itself free -- a reverse withdrawal that no one could explain.'"
+    }
+  ]
+}
