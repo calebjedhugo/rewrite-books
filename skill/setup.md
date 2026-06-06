@@ -105,12 +105,16 @@ Create this directory structure:
     chapter-bible.md
     chapter-map.json            # source file/offset mapping for EPUB reassembly
     progress.md                 # tracks iteration state
+    gates.py                    # deterministic quality gates (see 0.7)
+    prompts/                    # one filled-in instruction file per worker step (see 0.6)
     chapters/
-      ch01/
+      ch01/                     # (tree is non-exhaustive; workers add intermediate files)
         original.txt
-        rewrite.txt             # (created later)
-        footnotes.json          # (created later)
-        status.txt              # "pending"
+        rewrite.txt             # current best rewrite
+        footnotes.json          # editorial footnotes for EPUB
+        footnotes-verified.json # verifier audit + durable "verify ran" resume marker
+        line-edit.json          # transient line-edit findings (also footnotes-line-edit.json)
+        status.txt              # "pending" | "needs_work" | "approved"
       ch02/
         ...
     high-level/
@@ -180,3 +184,174 @@ Write `rewrite/progress.md`:
 ## Status Summary
 [Will be updated as work proceeds]
 ```
+
+### 0.6 Compile Worker Prompt Files
+
+**This is the step that keeps the orchestrator's context clean.** Workers are dispatched by the orchestrator directly (managers and `claude -p` no longer exist), each told only to read its instruction file. You produce those instruction files here so the orchestrator never has to author or read prompt text.
+
+1. Read `~/.claude/commands/rewrite-book/agent-templates.md`.
+2. For each template in the "Worker Templates" section, fill in `[Book Title]` and every absolute `[path]` with this book's real values. Leave `CHAP_DIR` literally as `CHAP_DIR` — the orchestrator supplies each worker's concrete chapter directory at dispatch time.
+3. Write each filled-in template verbatim to `[path]/rewrite/prompts/`, one file per step:
+
+   | output file | from template |
+   |---|---|
+   | `prompts/rewrite.md` | Rewrite Worker Template |
+   | `prompts/line-edit.md` | Line Editor Worker Template |
+   | `prompts/revise.md` | Revision Worker Template |
+   | `prompts/footnote.md` | Footnote Worker Template |
+   | `prompts/footnote-line-edit.md` | Footnote Line Editor Worker Template |
+   | `prompts/footnote-revise.md` | Footnote Revision Worker Template |
+   | `prompts/footnote-verify.md` | Footnote Verifier Worker Template |
+   | `prompts/reviewer.md` | Reviewer Worker Template |
+   | `prompts/revise-highlevel.md` | High-Level Revision Worker Template |
+
+There is **one file per step, not one per chapter** — the chapter number/dir varies per dispatch, not per file. Use the **Write tool** for each (pre-approved; avoids Bash permission prompts).
+
+4. Verify all nine files exist before returning.
+
+### 0.7 Write the Gate Script
+
+The pipeline's quality gates must be **deterministic**, not "trust the orchestrator's narration." A prior run shipped a book whose adversarial reviews found 75 real issues that were then silently never applied, because nothing verified fix-application. The orchestrator runs these gates and routes on their tiny pass/fail output — chapter/footnote CONTENT never enters its context.
+
+Write this file **verbatim** to `[path]/rewrite/gates.py` (use the Write tool):
+
+```python
+#!/usr/bin/env python3
+"""Deterministic quality gates for the rewrite-book pipeline.
+The orchestrator runs these via Bash and routes on the tiny pass/fail output;
+chapter and footnote CONTENT never enters the orchestrator's context.
+Exit code is non-zero if ANY checked item fails."""
+import sys, os, json, glob
+
+BASE = os.path.dirname(os.path.abspath(__file__))   # the rewrite/ dir
+CH = os.path.join(BASE, "chapters")
+
+def _read(p):
+    with open(p, encoding="utf-8") as f:
+        return f.read()
+
+def revise_applied(chapters):
+    """FAIL a chapter if any line-edit.json finding's `quote` is still a verbatim
+    substring of rewrite.txt — i.e. the suggested fix was NOT applied. Run this
+    immediately after each revise wave, against the line-edit.json revise consumed."""
+    rc = 0
+    for c in chapters:
+        d = os.path.join(CH, c)
+        le, rw = os.path.join(d, "line-edit.json"), os.path.join(d, "rewrite.txt")
+        if not (os.path.isfile(le) and os.path.isfile(rw)):
+            print(f"{c}: ERROR missing line-edit.json or rewrite.txt"); rc = 1; continue
+        try:
+            j = json.load(open(le, encoding="utf-8"))
+        except Exception as e:
+            print(f"{c}: ERROR line-edit.json invalid JSON ({e})"); rc = 1; continue
+        if j.get("verdict") != "has_issues":
+            print(f"{c}: APPLIED (verdict={j.get('verdict')}, nothing to apply)"); continue
+        text = _read(rw)
+        issues = j.get("issues", [])
+        quoted = [i.get("quote", "") for i in issues if i.get("quote", "")]
+        remain = [q for q in quoted if q in text]
+        if remain:
+            print(f"{c}: NOT-APPLIED ({len(remain)}/{len(quoted)} flagged quotes still present)"); rc = 1
+        else:
+            print(f"{c}: APPLIED ({len(quoted)} fixes)")
+    return rc
+
+def json_valid(paths):
+    """FAIL any path that is not parseable JSON (catches unescaped quotes etc.)."""
+    rc = 0
+    for p in paths:
+        try:
+            json.load(open(p, encoding="utf-8")); print(f"{p}: OK")
+        except Exception as e:
+            print(f"{p}: BAD ({e})"); rc = 1
+    return rc
+
+def footnote_substrings(chapters):
+    """FAIL any footnote whose `quote` is not an exact substring of rewrite.txt.
+    These get silently dropped from the EPUB otherwise. Run before Phase 6 build."""
+    rc = 0
+    chapters = chapters or sorted(os.path.basename(d) for d in glob.glob(os.path.join(CH, "ch*")))
+    for c in chapters:
+        d = os.path.join(CH, c)
+        fj, rw = os.path.join(d, "footnotes.json"), os.path.join(d, "rewrite.txt")
+        if not os.path.isfile(fj):
+            continue
+        if not os.path.isfile(rw):
+            print(f"{c}: ERROR missing rewrite.txt"); rc = 1; continue
+        try:
+            arr = json.load(open(fj, encoding="utf-8"))
+        except Exception as e:
+            print(f"{c}: BAD footnotes.json ({e})"); rc = 1; continue
+        if isinstance(arr, dict):   # {"needs_work": true, ...}
+            print(f"{c}: SKIP (needs_work)"); continue
+        text = _read(rw)
+        bad = [fn.get("quote", "") for fn in arr if fn.get("quote", "") not in text]
+        if bad:
+            for q in bad:
+                print(f"{c}: MISMATCH quote not in rewrite: {q[:70]!r}")
+            rc = 1
+        else:
+            print(f"{c}: OK ({len(arr)} footnotes)")
+    return rc
+
+def audit(_):
+    """End-of-run self-audit: run every gate across ALL chapters plus structural
+    completeness and status-vs-gate consistency. Prints a compact sectioned report
+    and a final ALL-CLEAR / FAILURES line. Exit non-zero if anything is wrong.
+    This is the deterministic half of Phase 8 — the orchestrator runs it directly;
+    it re-checks objective facts (substrings, JSON) it cannot fake."""
+    chapters = sorted(os.path.basename(d) for d in glob.glob(os.path.join(CH, "ch*")))
+    rc = 0
+    print("== structural completeness ==")
+    for c in chapters:
+        miss = [f for f in ("original.txt", "rewrite.txt", "footnotes.json", "status.txt")
+                if not os.path.isfile(os.path.join(CH, c, f))]
+        if miss:
+            print(f"{c}: MISSING {', '.join(miss)}"); rc = 1
+    print("== json-valid ==")
+    jpaths = [os.path.join(CH, c, f) for c in chapters
+              for f in ("line-edit.json", "footnotes.json", "footnotes-verified.json")
+              if os.path.isfile(os.path.join(CH, c, f))]
+    if json_valid(jpaths): rc = 1
+    print("== revise-applied ==")
+    if revise_applied([c for c in chapters if os.path.isfile(os.path.join(CH, c, "line-edit.json"))]): rc = 1
+    print("== footnote-substrings ==")
+    if footnote_substrings(chapters): rc = 1
+    print("== status vs gates ==")
+    for c in chapters:
+        sp = os.path.join(CH, c, "status.txt")
+        st = _read(sp).strip() if os.path.isfile(sp) else "(none)"
+        print(f"{c}: status={st}")
+    print("== high-level review currency ==")
+    reviews = glob.glob(os.path.join(BASE, "high-level", "review-round-*.md"))
+    if not reviews:
+        print("STALE: no high-level review found — Phase 4 not yet run"); rc = 1
+    else:
+        newest_review = max(os.path.getmtime(p) for p in reviews)
+        stale = [c for c in chapters
+                 if os.path.isfile(os.path.join(CH, c, "rewrite.txt"))
+                 and os.path.getmtime(os.path.join(CH, c, "rewrite.txt")) > newest_review]
+        if stale:
+            print(f"STALE: {len(stale)} chapter(s) changed after the last review "
+                  f"({', '.join(stale)}) — re-run Phase 4 against the final text"); rc = 1
+        else:
+            print("current (no rewrite.txt newer than the latest review)")
+    print()
+    print("AUDIT: " + ("FAILURES FOUND" if rc else "ALL-CLEAR"))
+    return 1 if rc else 0
+
+USAGE = "usage: gates.py {revise-applied chNN... | json-valid path... | footnote-substrings [chNN...] | audit}"
+if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print(USAGE); sys.exit(2)
+    cmd, args = sys.argv[1], sys.argv[2:]
+    if cmd == "revise-applied":     sys.exit(revise_applied(args))
+    if cmd == "json-valid":         sys.exit(json_valid(args))
+    if cmd == "footnote-substrings": sys.exit(footnote_substrings(args))
+    if cmd == "audit":              sys.exit(audit(args))
+    print(USAGE); sys.exit(2)
+```
+
+Confirm it runs: `python [path]/rewrite/gates.py` (prints usage, exit 2) before returning.
+
+**Return to the orchestrator** (keep it short): working directory path, chapter count, word-count range (min/max), and confirmation that `chapter-map.json`, `style-guide.md`, `chapter-bible.md`, all nine `prompts/*.md` files, and `gates.py` were created.

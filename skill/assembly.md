@@ -54,6 +54,8 @@ print('Dry run PASSED')
 
    Check the output for errors. If the function reports chapters it couldn't find headings for, the `_metadata` in chapter-map.json may need adjustment (wrong `heading_tag`, missing `heading_id`, etc.). Fix and re-run.
 
+   **CRITICAL — footnote match count is a hard gate, not a statistic.** `build_rewritten_epub()` reports how many footnote quotes matched (e.g. "125/128"). Any unmatched footnote is **silently dropped** from the published book. You MUST NOT treat a partial match as success. If `matched < total`, identify the offending chapters and return them as an **error** to the orchestrator (list which `chNN` and which quote failed) — do not finalize the EPUB. The orchestrator runs `gates.py footnote-substrings` before calling you, so a clean pipeline should arrive here at 100%; if you still see a miss, something changed and it must be fixed (re-anchor the quote via footnote-verify), not shipped. Report the exact match count in your return regardless.
+
    **If the generic build fails on an unusual EPUB structure**, fall back to writing a custom build script. Import the individual utility functions (`text_to_xhtml_paragraphs`, `write_endnotes_file`, `add_epub_namespace`, `update_manifest_and_spine`, `update_toc`, `update_title`) and handle the book-specific layout manually. **Do NOT reimplement** footnote matching or endnotes generation — always use the utility functions.
 
    **CRITICAL — Kobo popup footnote markup (handled by the utilities, but for reference):**

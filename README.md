@@ -75,22 +75,23 @@ The skill is resumable — if interrupted, re-invoke it and it picks up where it
 
 ## How it works
 
-The pipeline runs in 8 phases:
+The pipeline runs in 9 phases:
 
 | Phase | What happens |
 |-------|-------------|
-| 0 | Fetch EPUB, extract chapters, create style guide + chapter bible |
+| 0 | Fetch EPUB, extract chapters, create style guide + chapter bible, compile per-step worker prompts and the gate script |
 | 0.9 | Checkpoint — user reviews setup before committing to 100+ agents |
-| 1 | Rewrite all chapters (parallel, batches of 2) with line-edit passes |
-| 2 | Write editorial footnotes for each chapter (parallel, batches of 2) |
-| 3 | Iteration loop — re-rewrite any chapters that failed quality gate |
-| 4 | High-level holistic review of full manuscript |
+| 1 | Rewrite all chapters (parallel waves), each with an adversarial line-edit → revise cycle whose fix-application is verified by a deterministic gate |
+| 2 | Write and verify editorial footnotes for each chapter (parallel waves) |
+| 3 | Iteration loop — re-rewrite any chapters that failed the quality gate |
+| 4 | High-level holistic review of the full manuscript |
 | 5 | Iteration loop — revise flagged chapters, re-review |
 | 6 | Reassemble EPUB with footnotes, optional calibre upload |
 | 7 | Optional audiobook generation (macOS TTS) |
-| 8 | Final report |
+| 8 | Final audit — deterministic gate sweep + delegated quality review |
+| 9 | Final report |
 
-Books over 35 chapters are automatically split across multiple manager agents to avoid context exhaustion.
+The orchestrator dispatches every worker agent directly and routes on one-line returns; chapter text never enters its own context. Quality is enforced by **deterministic gates** (a `gates.py` written per project), not by trusting agents' self-reports — fix-application, footnote-quote integrity, JSON validity, and review currency are each re-checked objectively before the run is allowed to finish. For very large books the orchestrator processes chapters in ranges to stay within context.
 
 ## Project structure
 
@@ -119,11 +120,15 @@ Each book project gets its own directory under `working_dir`:
     style-guide.md          # Voice and tone rules for this book
     chapter-bible.md        # Characters, locations, terms, timeline
     chapter-map.json        # EPUB structure mapping for reassembly
+    gates.py                # Deterministic quality gates (run by the orchestrator)
+    prompts/                # One filled-in instruction file per worker step
     chapters/
       ch01/
         original.txt        # Extracted chapter text
         rewrite.txt         # Rewritten chapter
         footnotes.json      # Editorial footnotes
+        footnotes-verified.json  # Footnote fact-check + "verify ran" marker
+        line-edit.json      # Adversarial line-edit findings
         status.txt          # "pending" / "approved" / "needs_work"
       ch02/ ...
     high-level/

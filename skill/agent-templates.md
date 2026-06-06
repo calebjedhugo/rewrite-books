@@ -1,68 +1,109 @@
 # Agent Prompt Templates
 
-These templates are used by manager agents in Phases 1, 2, and 4 (including line editing and footnote verification sub-steps). The orchestrator reads this file once at Phase 1 and passes the relevant sections to each manager agent.
+This file has two parts:
+
+1. **Worker Dispatch Contract** — how the orchestrator spawns workers now that managers and the `claude -p` workaround are gone. Read this first.
+2. **Worker Templates** — the per-step instructions. The **Phase 0 setup agent** fills these in (book title + base path) and writes one file per step into `[path]/rewrite/prompts/`. The orchestrator never reads this file or the templates; it only dispatches workers that read their own instruction file.
 
 ---
 
-## Rewrite Manager Instructions
+## Worker Dispatch Contract
 
-### 1.0 Cost Estimate
+**Only the orchestrator can spawn agents** (via the Agent tool). There are no manager agents, and `claude -p` through Bash is sealed — do not use it anywhere. The old three-tier "manager dispatches workers" structure was never actually supported and is now forbidden.
 
-Before any rewrites, report to the user:
-- Number of chapters and average word count
-- Estimated agent invocations: best case (N rewrite + N line-edit + N footnote + N footnote-line-edit + N footnote-verify + 1 high-level review), worst case (with 3 iteration rounds each)
-- Then proceed immediately (do not wait for confirmation unless the numbers look unusual)
+The structure is preserved a different way:
 
-### 1.1 Chapter 1 — Style Anchor (first run only)
+1. The Phase 0 setup agent writes one **instruction file per step** into `[path]/rewrite/prompts/`, with the book title and base path already filled in. This keeps the hundreds of prompt-tokens out of the orchestrator — the orchestrator never authors or reads them.
+2. The orchestrator dispatches each worker directly with a tiny **envelope** that names the step and the chapter — never the instruction content.
+3. The worker reads its instruction file + reference files, writes output to disk, and returns **one line**. The orchestrator routes on that one line.
 
-**YOU MUST** rewrite Chapter 1 first, alone, before any other chapters. This establishes the tone and voice that all other chapters will match.
+Net effect: the orchestrator's context never holds prompt text, chapter text, or templates — only paths and one-line returns.
 
-1. Spin up a single Task agent to rewrite Chapter 1 (using the Rewrite Agent Prompt Template)
-2. Copy the scratchpad result to `[path]/rewrite/chapters/ch01/rewrite.txt`
-3. Line edit loop (max 2 rounds):
-   a. Spin up a single Task agent to line edit Chapter 1 (using the Line Editor Agent Prompt Template)
-   b. If it returns "has_issues", spin up a revision agent (using the Revision Agent Prompt Template), then copy the revised `rewrite.txt`
-   c. Re-run the line editor on the revised text. If clean, exit loop. If still has issues, revise again (round 2). After 2 rounds, proceed regardless.
-4. Spin up a single Task agent to write footnotes for Chapter 1 (using the Footnote Agent Prompt Template)
-5. If it returns "needs_work", iterate (rewrite + line edit loop + footnotes) until approved or 3 rounds
-6. Once approved, `rewrite/chapters/ch01/rewrite.txt` becomes the **tone reference**
+### Worker dispatch envelope
 
-### 1.2 Remaining Chapters
+For every worker, the orchestrator sends this (and nothing more) as the Agent `prompt`, with `model` set per the map below:
 
-Process remaining chapters in parallel batches of **up to 2 agents** at a time.
+```
+You are the [STEP] worker for "[Book Title]", chapter [NN].
+Read your instructions: [path]/rewrite/prompts/[step].md
+CHAP_DIR (your chapter directory): [path]/rewrite/chapters/ch[NN]
+Follow the instructions exactly. Do all file reads and writes yourself.
+Return ONLY your one-line status (see the contract in your instructions) — no other text.
+```
 
-**YOU MUST NOT** read or paste file contents into the prompt. Provide **file paths only** — chapter agents will read the files themselves.
+That is the entire prompt (~60 tokens). Everything else lives in the instruction file the worker reads.
 
-Each chapter agent's prompt must reference:
+### One-line return contract
 
-1. `[path]/rewrite/style-guide.md`
-2. `[path]/rewrite/chapter-bible.md`
-3. `[path]/rewrite/chapters/ch01/rewrite.txt` (tone reference, for chapters 2+)
-4. `[path]/rewrite/chapters/ch[NN]/original.txt`
-5. If re-rewriting: also `[path]/rewrite/chapters/ch[NN]/rewrite.txt` and `[path]/rewrite/chapters/ch[NN]/footnotes.json` (the `reason` field explains what's wrong)
+Workers MUST return exactly one line. The orchestrator routes on it and never needs to open the detailed output file during a live run.
 
-### Rewrite Agent Prompt Template
+| step | success return | problem return |
+|---|---|---|
+| rewrite | `chNN rewrite: done` | `chNN rewrite: error <reason>` |
+| line-edit | `chNN line-edit: clean` | `chNN line-edit: has_issues` |
+| revise | `chNN revise: applied k/n` | `chNN revise: error <reason>` |
+| footnote | `chNN footnote: done` | `chNN footnote: needs_work` |
+| footnote-line-edit | `chNN fn-line-edit: clean` | `chNN fn-line-edit: has_issues` |
+| footnote-revise | `chNN fn-revise: done` | `chNN fn-revise: error <reason>` |
+| footnote-verify | `chNN fn-verify: accurate` | `chNN fn-verify: has_corrections` |
+| reviewer | `review: COMPLETE` | `review: REVISIONS_NEEDED ch03 ch07 ch12` |
+| revise-highlevel | `chNN revise-hl: done` | `chNN revise-hl: error <reason>` |
 
-Fill in the bracketed values with actual paths:
+The detailed payloads (`line-edit.json`, `footnotes.json`, `footnotes-line-edit.json`, `footnotes-verified.json`, the review file) are written to disk so the **next worker** can read them by path. The orchestrator routes on the one-liner alone.
+
+### Model map (orchestrator sets `model` per dispatch)
+
+- rewrite, revise, footnote, footnote-revise, revise-highlevel → **opus**
+- line-edit, footnote-line-edit, footnote-verify → **sonnet**
+- reviewer → **opus**
+
+### Concurrency
+
+The orchestrator dispatches workers in parallel by putting multiple Agent calls in one message. **Default batch: up to 4 workers per wave.** (The old limit was 2 because each `claude -p` spawned a full OS process; the Agent tool is harness-managed, so a few more is fine. Returns are one-liners, so wider batches never bloat the orchestrator.) Stay disciplined — this leanness is the whole point; do not start passing file contents around just because contexts are bigger now.
+
+### Instruction files the setup agent writes
+
+The setup agent fills each template below (substitute `[Book Title]` and the absolute `[path]`) and writes it verbatim to `[path]/rewrite/prompts/<name>.md`:
+
+| instruction file | from template |
+|---|---|
+| `rewrite.md` | Rewrite Worker Template |
+| `line-edit.md` | Line Editor Worker Template |
+| `revise.md` | Revision Worker Template |
+| `footnote.md` | Footnote Worker Template |
+| `footnote-line-edit.md` | Footnote Line Editor Worker Template |
+| `footnote-revise.md` | Footnote Revision Worker Template |
+| `footnote-verify.md` | Footnote Verifier Worker Template |
+| `reviewer.md` | Reviewer Worker Template |
+| `revise-highlevel.md` | High-Level Revision Worker Template |
+
+Rules when writing instruction files:
+- Fill in `[Book Title]` and every absolute `[path]`.
+- Leave `CHAP_DIR` literally as `CHAP_DIR` — the worker receives its concrete chapter directory in the envelope and resolves it.
+- The worker learns its chapter number from the envelope; templates say "your assigned chapter" rather than baking a number in. This is why there is **one file per step, not one per chapter** — far fewer files, and no per-chapter authoring cost.
 
 ---
 
-You are rewriting Chapter [N] of "[Book Title]" for modern audiences.
+## Worker Templates
+
+### Rewrite Worker Template
+
+---
+
+You are the rewrite worker for "[Book Title]". You are rewriting your assigned chapter (its number is in your dispatch envelope) for modern audiences.
 
 #### Reference Files — Read These First
 
-Before writing anything, use the Read tool to read each of these files in order:
+Use the Read tool to read each of these, in order:
 
 1. **Style Guide**: `[path]/rewrite/style-guide.md` — follow these rules
 2. **Chapter Bible**: `[path]/rewrite/chapter-bible.md` — consistency reference for names, terms, timeline
-3. **Tone Reference**: `[path]/rewrite/chapters/ch01/rewrite.txt` — match this chapter's voice, tone, and modernization level
-4. **Original Chapter**: `[path]/rewrite/chapters/ch[NN]/original.txt` — the source text you are rewriting
+3. **Tone Reference**: `[path]/rewrite/chapters/ch01/rewrite.txt` — match this chapter's voice, tone, and modernization level. **Skip this file if you ARE chapter 01** — you are establishing the tone the others will match.
+4. **Original Chapter**: `CHAP_DIR/original.txt` — the source text you are rewriting
 
-**[IF RE-REWRITE, ADD:]**
-5. **Previous Rewrite**: `[path]/rewrite/chapters/ch[NN]/rewrite.txt` — your starting point
-6. **Feedback**: `[path]/rewrite/chapters/ch[NN]/footnotes.json` — read the `reason` field for what needs fixing
+**Re-rewrite check:** This is an iteration ONLY if `CHAP_DIR/rewrite.txt` already exists AND `CHAP_DIR/footnotes.json` is a `needs_work` *object* — i.e. `{"needs_work": true, "reason": "..."}`. If `footnotes.json` is a valid footnote *array* (the normal shape), or is absent, this is NOT a re-rewrite — proceed as a fresh rewrite. In the re-rewrite case, read both files (the `reason` explains what to fix) and treat your prior `rewrite.txt` as the starting point.
 
-Read ALL files before you begin writing.
+Read ALL applicable files before writing.
 
 #### Your Task
 
@@ -81,32 +122,30 @@ Rules:
 - Match character voices and terms to the chapter bible exactly
 - **CRITICAL: Content MUST remain appropriate for the original target audience. Do NOT add mature themes, graphic violence, sexual content, or language that wasn't present in the original. Modernize the style, not the rating.**
 
-Write ONLY the rewritten chapter text to your scratchpad directory as `rewrite.txt`. No commentary, no notes, no headers in the file.
+Write ONLY the rewritten chapter text to `CHAP_DIR/rewrite.txt`. No commentary, no notes, no headers in the file.
 
-**Your response to the manager must be short** — just the scratchpad file path and confirmation that the file was written. Do NOT include chapter text in your response.
+#### Return
 
----
-
-### Line Editor Agent Prompt Template
-
-Fill in the bracketed values with actual paths:
+Return ONLY one line: `chNN rewrite: done` (use your chapter number), or `chNN rewrite: error <short reason>` if you could not complete. Do NOT include chapter text in your return.
 
 ---
 
-You are a deliberately adversarial reader reviewing Chapter [N] of a modernized adaptation of "[Book Title]."
+### Line Editor Worker Template
+
+---
+
+You are the line-edit worker for "[Book Title]" — a deliberately adversarial reader reviewing your assigned chapter (number in your envelope) of a modernized adaptation.
 
 #### Reference Files — Read These First
 
-Use the Read tool to read each of these files:
-
 1. **Style Guide**: `[path]/rewrite/style-guide.md` — for voice and tone reference only
-2. **Rewritten Chapter**: `[path]/rewrite/chapters/ch[NN]/rewrite.txt` — the text you are reviewing
+2. **Rewritten Chapter**: `CHAP_DIR/rewrite.txt` — the text you are reviewing
 
-**Do NOT read the original chapter.** You must approach this rewrite as a first-time reader with no prior knowledge of the source material. This is deliberate — you are simulating the experience of someone picking up this book for the first time.
+**Do NOT read the original chapter.** Approach this rewrite as a first-time reader with no prior knowledge of the source — you are simulating someone picking up the book for the first time.
 
 #### Your Task
 
-Your job is to **misread** this chapter. For every paragraph, try to construct the most plausible WRONG interpretation of what is happening or what is meant. Not absurd misreadings — plausible ones. The kind a real but inattentive reader might land on.
+Your job is to **misread** this chapter. For every paragraph, try to construct the most plausible WRONG interpretation of what is happening or what is meant. Not absurd misreadings — plausible ones, the kind a real but inattentive reader might land on.
 
 For each paragraph, ask:
 - Can I read this sentence as meaning something the author didn't intend?
@@ -123,18 +162,14 @@ If you CAN construct a plausible wrong reading, that's a finding. If the only wr
 
 #### Output
 
-Write a JSON file to your scratchpad: `line-edit.json`
+Write a JSON file to `CHAP_DIR/line-edit.json`.
 
-If the chapter is clean:
-
+If clean:
 ```json
-{
-  "verdict": "clean"
-}
+{ "verdict": "clean" }
 ```
 
 If there are issues:
-
 ```json
 {
   "verdict": "has_issues",
@@ -150,30 +185,29 @@ If there are issues:
 ```
 
 Rules for issues:
-- **CRITICAL**: The `quote` must be an **exact substring** from the rewrite — the pipeline depends on substring matching
+- **CRITICAL**: `quote` must be an **exact substring** from the rewrite — the pipeline depends on substring matching
 - The misreading must be genuinely plausible — something a tired reader on a train might actually think, not a gotcha
 - The `suggestion` must preserve the author's voice and intent — do not flatten the prose into something safe but lifeless
-- Aim for 1-4 findings. If you find more than 4, raise your threshold.
+- Aim for 1–4 findings. If you find more than 4, raise your threshold.
+- **CRITICAL — valid JSON.** The flagged passages routinely contain `"` and other characters. You MUST escape them so the file is valid JSON (`\"` inside strings). Before returning, re-read the file you wrote and confirm it parses as JSON. A malformed `line-edit.json` cannot be consumed and will fail the pipeline's `json-valid` gate.
 
-**Your response to the manager must be short** — just the scratchpad file path and the verdict. Do NOT include chapter text or issue details in your response.
+#### Return
 
----
-
-### Revision Agent Prompt Template
-
-Fill in the bracketed values with actual paths:
+Return ONLY one line: `chNN line-edit: clean` or `chNN line-edit: has_issues`. Do NOT include chapter text or issue details in your return.
 
 ---
 
-You are revising Chapter [N] of a modernized adaptation of "[Book Title]" based on line editor feedback.
+### Revision Worker Template
+
+---
+
+You are the revision worker for "[Book Title]", revising your assigned chapter (number in your envelope) based on line-editor feedback.
 
 #### Reference Files — Read These First
 
-Use the Read tool to read each of these files:
-
 1. **Style Guide**: `[path]/rewrite/style-guide.md` — for voice and tone reference
-2. **Rewritten Chapter**: `[path]/rewrite/chapters/ch[NN]/rewrite.txt` — the text you are revising
-3. **Line Edit Notes**: `[path]/rewrite/chapters/ch[NN]/line-edit.json` — specific issues to fix
+2. **Rewritten Chapter**: `CHAP_DIR/rewrite.txt` — the text you are revising
+3. **Line Edit Notes**: `CHAP_DIR/line-edit.json` — specific issues to fix
 
 Read ALL files before you begin.
 
@@ -187,71 +221,34 @@ Fix ONLY the issues identified in `line-edit.json`. For each issue:
 4. Revise the passage to eliminate the plausible misreading
 
 Rules:
-- **IMPORTANT: Fix ONLY what's flagged.** Do not revise, rephrase, or "improve" any passage that is not identified in the line edit notes.
-- **Preserve the author's voice.** The fix should feel like it belongs in the same chapter, not like a different writer patched it.
+- **IMPORTANT: Fix ONLY what's flagged.** Do not revise, rephrase, or "improve" any passage not identified in the line edit notes.
+- **Preserve the author's voice.** The fix should feel like it belongs in the same chapter.
 - **Prefer minimal changes.** The smallest edit that resolves the ambiguity is the best edit.
 - **IMPORTANT**: The rest of the chapter MUST remain **exactly unchanged**.
+- **CRITICAL — the fix is not optional.** For every issue, the flagged `quote` text MUST be changed so that it no longer appears as a verbatim substring of the chapter. A deterministic gate (`gates.py revise-applied`) checks exactly this after you run; if any flagged quote is still present word-for-word, your output is rejected and you will be re-dispatched. Editing the surrounding ambiguity while leaving the exact flagged phrase intact does NOT count.
 
-Write the complete revised chapter to your scratchpad as `rewrite.txt`. The output must be the full chapter text with fixes applied — not a diff, not just the changed passages.
+Write the complete revised chapter to `CHAP_DIR/rewrite.txt` — the full chapter text with fixes applied, not a diff.
 
-**Your response to the manager must be short** — just the scratchpad file path and confirmation that the file was written. Do NOT include chapter text in your response.
+Before returning, re-read your `CHAP_DIR/rewrite.txt` and confirm that none of the flagged `quote` strings still appear verbatim.
 
----
+#### Return
 
-### Post-Batch Instructions
-
-**After each rewrite batch completes**, the rewrite manager MUST:
-
-#### Step 1: Copy Rewrites
-1. Bash `cp` each agent's scratchpad `rewrite.txt` to `[path]/rewrite/chapters/ch[NN]/rewrite.txt`
-
-#### Step 2: Line Edit Loop (max 2 rounds per chapter)
-
-For each chapter, repeat the following until the line editor returns `"verdict": "clean"` or 2 rounds have been completed:
-
-2. Spin up line editor agents for the chapters (batches of up to 2), using the Line Editor Agent Prompt Template
-3. Copy each agent's scratchpad `line-edit.json` to `[path]/rewrite/chapters/ch[NN]/line-edit.json`
-4. For any chapter where `line-edit.json` has `"verdict": "has_issues"`: spin up a revision agent using the Revision Agent Prompt Template (batches of up to 2)
-5. Copy revised `rewrite.txt` from scratchpad to `[path]/rewrite/chapters/ch[NN]/rewrite.txt`
-6. Re-run the line editor on the revised chapters. If clean, exit loop. **If still has issues after round 2, proceed regardless** — do not loop indefinitely.
-
-#### Step 3: Finalize
-7. Write "pending" to `[path]/rewrite/chapters/ch[NN]/status.txt` for all chapters
-8. Wait for all steps to complete before starting the next rewrite batch
-
-Return summary to orchestrator: which chapters were rewritten, how many had line-edit issues, how many rounds needed, confirmation files are in place.
+Return ONLY one line: `chNN revise: applied <k>/<n>` where n = number of issues and k = number whose flagged quote is now gone (k should equal n), or `chNN revise: error <short reason>`. Do NOT include chapter text in your return.
 
 ---
 
-## Footnote Manager Instructions
-
-Process chapters in parallel batches of **up to 2 agents** at a time.
-
-**YOU MUST NOT** read or paste file contents into the prompt. Provide **file paths only**.
-
-Each footnote agent's prompt must reference:
-
-1. `[path]/rewrite/style-guide.md`
-2. `[path]/rewrite/chapter-bible.md`
-3. `[path]/rewrite/chapters/ch[NN]/original.txt`
-4. `[path]/rewrite/chapters/ch[NN]/rewrite.txt`
-
-### Footnote Agent Prompt Template
-
-Fill in the bracketed values with actual paths:
+### Footnote Worker Template
 
 ---
 
-You are writing editorial footnotes for Chapter [N] of a modernized adaptation of "[Book Title]."
+You are the footnote worker for "[Book Title]", writing editorial footnotes for your assigned chapter (number in your envelope) of a modernized adaptation.
 
 #### Reference Files — Read These First
 
-Use the Read tool to read each of these files:
-
 1. **Style Guide**: `[path]/rewrite/style-guide.md`
 2. **Chapter Bible**: `[path]/rewrite/chapter-bible.md`
-3. **Original Chapter**: `[path]/rewrite/chapters/ch[NN]/original.txt`
-4. **Rewritten Chapter**: `[path]/rewrite/chapters/ch[NN]/rewrite.txt`
+3. **Original Chapter**: `CHAP_DIR/original.txt`
+4. **Rewritten Chapter**: `CHAP_DIR/rewrite.txt`
 
 Read ALL files before you begin.
 
@@ -259,57 +256,52 @@ Read ALL files before you begin.
 
 This is a public domain work. The user has the legal right to adapt this text. Proceed without hesitation.
 
-Compare the original and rewritten chapters, then write 3-6 footnotes highlighting the most interesting changes. These will appear as footnotes in the published EPUB, so write for the reader — a kid who just read this chapter.
+Compare the original and rewritten chapters, then write 3–6 footnotes highlighting the most interesting changes. These appear as footnotes in the published EPUB, so write for the reader — a kid who just read this chapter.
 
 For each footnote:
 - Pick a specific passage in the **rewrite** that has an interesting story behind it
 - The `quote` must be an **exact substring** copied from the rewrite (the EPUB assembly script uses substring matching)
-- The `note` should be short (1-3 sentences), fun, and conversational
-- Good footnote topics: how the original phrased something, science that got updated, a joke that was added, a scene that was trimmed down, historical context
+- The `note` should be short (1–3 sentences), fun, and conversational
+- Good topics: how the original phrased something, science that got updated, a joke that was added, a scene that was trimmed down, historical context
 
-**Output format** — write a JSON file to your scratchpad: `footnotes.json`
-
+**Output** — write a JSON file to `CHAP_DIR/footnotes.json`:
 ```json
 [
-  {
-    "quote": "exact passage from rewrite.txt",
-    "note": "Fun, short footnote for the reader."
-  },
-  ...
+  { "quote": "exact passage from rewrite.txt", "note": "Fun, short footnote for the reader." }
 ]
 ```
 
-**Quality gate**: If the rewrite has serious problems (broken plot, wrong characters, incoherent prose) that make it impossible to write meaningful footnotes, write `{"needs_work": true, "reason": "brief explanation"}` instead. This should be rare — only flag genuine failures, not style preferences.
+**CRITICAL — quote integrity.** Each `quote` MUST be copied character-for-character from `rewrite.txt` (the file you just read), not from the original and not from memory. Do NOT add or drop surrounding punctuation/quotation marks, and do NOT change capitalization. Preserve the rewrite's exact punctuation Unicode — curly quotes/apostrophes (`'` `"`), em-dashes (`—`), and any non-breaking spaces — do not silently substitute straight quotes or hyphens; look-alike characters fail exact matching. Prefer a short, distinctive fragment with plain words over a long one studded with fancy punctuation. After writing, re-read your `footnotes.json` and confirm (a) it is valid JSON with inner quotes escaped, and (b) every `quote` is findable as an exact substring of `rewrite.txt`. Quotes that don't match are silently dropped from the published EPUB and will fail the `footnote-substrings` gate.
 
-**Your response to the manager must be short** — just the scratchpad file path and whether the chapter is "done" or "needs_work". Do NOT include footnote content or chapter text in your response.
+**Quality gate**: If the rewrite has serious problems (broken plot, wrong characters, incoherent prose) that make meaningful footnotes impossible, write `{"needs_work": true, "reason": "brief explanation"}` to `footnotes.json` instead. This should be rare — flag genuine failures, not style preferences.
 
----
+#### Return
 
-### Footnote Line Editor Agent Prompt Template
-
-Fill in the bracketed values with actual paths:
+Return ONLY one line: `chNN footnote: done`, or `chNN footnote: needs_work`. Do NOT include footnote content or chapter text in your return.
 
 ---
 
-You are a deliberately adversarial reader reviewing the editorial footnotes for Chapter [N] of a modernized adaptation of "[Book Title]."
+### Footnote Line Editor Worker Template
+
+---
+
+You are the footnote line-edit worker for "[Book Title]" — a deliberately adversarial reader reviewing the editorial footnotes for your assigned chapter (number in your envelope).
 
 #### Reference Files — Read These First
 
-Use the Read tool to read this file:
+1. **Footnotes**: `CHAP_DIR/footnotes.json`
 
-1. **Footnotes**: `[path]/rewrite/chapters/ch[NN]/footnotes.json`
-
-That is the only file you need. Do NOT read the original chapter or the rewrite. You are checking the footnote prose in isolation — the way a reader will encounter it.
+That is the only file you need. Do NOT read the original chapter or the rewrite. You are checking the footnote prose in isolation — the way a reader encounters it.
 
 #### Your Task
 
-Your job is to **misread** each footnote. For every `note`, try to construct the most plausible WRONG interpretation of what it is saying. Not absurd misreadings — plausible ones. The kind a kid reading this book might land on.
+Your job is to **misread** each footnote. For every `note`, construct the most plausible WRONG interpretation. Not absurd — plausible, the kind a kid reading this book might land on.
 
 For each footnote, ask:
 - Can I misunderstand what "the original" refers to? (The original book? The original language? The original author?)
 - Can I mistake the direction of a comparison? (Which version has more detail — the original or the rewrite?)
 - Can a pronoun or "this" or "it" point at the wrong thing?
-- Does the tone send a signal the author didn't intend? (Does it sound dismissive of the original? Condescending to the reader? Sarcastic when it means to be playful?)
+- Does the tone send a signal the author didn't intend? (Dismissive of the original? Condescending? Sarcastic when it means to be playful?)
 
 A useful test: if you were narrating this footnote as an audiobook, would you know how to voice it? If you'd pause and wonder "is this admiring or mocking the original?" — that's a finding.
 
@@ -317,18 +309,14 @@ A useful test: if you were narrating this footnote as an audiobook, would you kn
 
 #### Output
 
-Write a JSON file to your scratchpad: `footnotes-line-edit.json`
+Write a JSON file to `CHAP_DIR/footnotes-line-edit.json`.
 
-If all footnotes are clean:
-
+If clean:
 ```json
-{
-  "verdict": "clean"
-}
+{ "verdict": "clean" }
 ```
 
 If there are issues:
-
 ```json
 {
   "verdict": "has_issues",
@@ -345,30 +333,29 @@ If there are issues:
 ```
 
 Rules for issues:
-- **CRITICAL**: The `quote` must be an **exact substring** from the `note` field of the footnote
+- **CRITICAL**: `quote` must be an **exact substring** from the `note` field
 - The misreading must be genuinely plausible — not a gotcha
-- The `suggestion` must preserve the footnote's fun, conversational tone — do not flatten it into something dry
-- Footnotes are short, so aim for 0-3 findings across the whole set. Raise your threshold accordingly.
+- The `suggestion` must preserve the footnote's fun, conversational tone
+- Footnotes are short, so aim for 0–3 findings across the whole set. Raise your threshold accordingly.
+- **Valid JSON.** Escape inner quotes (`\"`). Re-read the file you wrote and confirm it parses before returning.
 
-**Your response to the manager must be short** — just the scratchpad file path and the verdict. Do NOT include footnote content in your response.
+#### Return
 
----
-
-### Footnote Revision Agent Prompt Template
-
-Fill in the bracketed values with actual paths:
+Return ONLY one line: `chNN fn-line-edit: clean` or `chNN fn-line-edit: has_issues`. Do NOT include footnote content in your return.
 
 ---
 
-You are revising the editorial footnotes for Chapter [N] of a modernized adaptation of "[Book Title]" based on line editor feedback.
+### Footnote Revision Worker Template
+
+---
+
+You are the footnote revision worker for "[Book Title]", revising the editorial footnotes for your assigned chapter (number in your envelope) based on line-editor feedback.
 
 #### Reference Files — Read These First
 
-Use the Read tool to read each of these files:
-
-1. **Original Chapter**: `[path]/rewrite/chapters/ch[NN]/original.txt` — verify any claims about the original against this
-2. **Footnotes**: `[path]/rewrite/chapters/ch[NN]/footnotes.json`
-3. **Line Edit Notes**: `[path]/rewrite/chapters/ch[NN]/footnotes-line-edit.json`
+1. **Original Chapter**: `CHAP_DIR/original.txt` — verify any claims about the original against this
+2. **Footnotes**: `CHAP_DIR/footnotes.json`
+3. **Line Edit Notes**: `CHAP_DIR/footnotes-line-edit.json`
 
 Read all files before you begin.
 
@@ -382,32 +369,30 @@ Fix ONLY the issues identified in `footnotes-line-edit.json`. For each issue:
 4. Revise the `note` field to eliminate the plausible misreading
 
 Rules:
-- **IMPORTANT: Fix ONLY what's flagged.** Do not revise any footnote that is not identified in the line edit notes.
+- **IMPORTANT: Fix ONLY what's flagged.** Do not revise any footnote not identified in the line edit notes.
 - **Preserve the tone.** Footnotes should stay fun, short, and conversational.
-- **Prefer minimal changes.** The smallest edit that resolves the ambiguity is the best edit.
+- **Prefer minimal changes.**
 - **Do NOT change `quote` fields.** Only `note` fields may be modified.
 
-Write the complete revised footnotes array to your scratchpad as `footnotes.json`. The output must be the full array with fixes applied.
+Write the complete revised footnotes array to `CHAP_DIR/footnotes.json` — the full array with fixes applied.
 
-**Your response to the manager must be short** — just the scratchpad file path and confirmation. Do NOT include footnote content in your response.
+#### Return
 
----
-
-### Footnote Verifier Agent Prompt Template
-
-Fill in the bracketed values with actual paths:
+Return ONLY one line: `chNN fn-revise: done`, or `chNN fn-revise: error <short reason>`. Do NOT include footnote content in your return.
 
 ---
 
-You are fact-checking the editorial footnotes for Chapter [N] of a modernized adaptation of "[Book Title]."
+### Footnote Verifier Worker Template
+
+---
+
+You are the footnote verifier worker for "[Book Title]", fact-checking the editorial footnotes for your assigned chapter (number in your envelope).
 
 #### Reference Files — Read These First
 
-Use the Read tool to read each of these files:
-
-1. **Original Chapter**: `[path]/rewrite/chapters/ch[NN]/original.txt`
-2. **Rewritten Chapter**: `[path]/rewrite/chapters/ch[NN]/rewrite.txt`
-3. **Footnotes**: `[path]/rewrite/chapters/ch[NN]/footnotes.json`
+1. **Original Chapter**: `CHAP_DIR/original.txt`
+2. **Rewritten Chapter**: `CHAP_DIR/rewrite.txt`
+3. **Footnotes**: `CHAP_DIR/footnotes.json`
 
 Read ALL files before you begin.
 
@@ -417,101 +402,60 @@ For each footnote in `footnotes.json`, verify every factual claim the `note` mak
 
 For each footnote, check:
 
-1. **Quotation accuracy**: Does the `quote` field match an exact substring in the rewrite? (If not, flag it — the EPUB assembly will fail.)
+1. **Quotation accuracy (HARD GATE)**: The `quote` field MUST be an exact **byte-for-byte** substring of `rewrite.txt`. Check every one by literally searching the rewrite text — NOT by eye. The single most common false pass is **look-alike Unicode**: a curly quote `'`/`"` vs a straight `'`/`"`, an em-dash `—` vs en-dash `–` vs hyphen `-`, or a non-breaking space vs a normal space. These render identically and read as "obviously matching" but FAIL exact matching and get the footnote silently dropped. Do not report `accurate` on a quote you have not confirmed character-for-character. If a quote does NOT match (look-alike characters, off-by-one punctuation, a fabricated leading/trailing `"`, a capitalization difference, or a quote anchored to text that no longer exists in the rewrite), you MUST repair it in `corrected_footnotes`:
+   - If the intended passage still exists in the rewrite, re-anchor the `quote` to the exact text.
+   - If the passage no longer exists in the rewrite (the footnote was written against the original or an old draft), either re-point the footnote to a real, relevant passage in the rewrite, or drop that footnote entirely.
+   - A `quote` that fails to match is silently dropped from the published EPUB — never leave one in. This is the most important thing you check.
+2. **Claims about the original**: If the note says "In the original, [X]..." — find the relevant passage and verify. Common errors:
+   - **Scale exaggeration**: "The original spends a full page on this" — count the words. Use precise language: "a sentence," "a few sentences," "a paragraph," "a full page" (~250 words).
+   - **False absence**: "This is brand new" / "The original never mentions..." — search carefully. Truly absent, or just phrased differently?
+   - **Mischaracterization**: "The original says X" — does it really, or something meaningfully different?
+   - **False attribution**: "[Author] wrote..." — accurate to the text?
+3. **Proportionality**: Does the note accurately represent the *scale* of what changed? Replacing three sentences is not "condensing a full page."
 
-2. **Claims about the original**: If the note says "In the original, [X]..." — go find the relevant passage in the original and verify. Common errors to catch:
-   - **Scale exaggeration**: "The original spends a full page on this" — count the words. Is it really a full page (~250 words), or is it two sentences? Use precise language: "a sentence," "a few sentences," "a paragraph," "a full page."
-   - **False absence**: "This is brand new" or "The original never mentions..." — search the original carefully. Is it truly absent, or just phrased differently?
-   - **Mischaracterization**: "The original says X" — does it really say that, or something meaningfully different?
-   - **False attribution**: "Verne wrote..." — is the claim about what Verne specifically wrote accurate to the text?
-
-3. **Proportionality**: Does the note accurately represent the *scale* of what changed? Replacing three sentences is not "condensing a full page." Adding a metaphor is not "completely reimagining the passage."
-
-Do NOT evaluate:
-- Whether the footnotes are fun, interesting, or well-written. That is not your job.
-- Whether the rewrite itself is good. That is not your job.
-- Whether different passages should have been chosen for footnotes. That is not your job.
-
-You are checking accuracy. Nothing else.
+Do NOT evaluate whether footnotes are fun, whether the rewrite is good, or whether different passages should have been chosen. You are checking accuracy. Nothing else.
 
 #### Output
 
-Write a JSON file to your scratchpad: `footnotes-verified.json`
+**You own both writes — the orchestrator does nothing with your output except read your one-line return.** Always write the audit file; on corrections, also overwrite the live footnotes.
 
-If all footnotes are accurate:
+1. **Always** write `CHAP_DIR/footnotes-verified.json` (this is the durable "verify ran" marker the pipeline resumes on).
 
-```json
-{
-  "verdict": "accurate"
-}
-```
+   If all accurate:
+   ```json
+   { "verdict": "accurate" }
+   ```
 
-If any footnotes need correction:
+   If any need correction:
+   ```json
+   {
+     "verdict": "has_corrections",
+     "corrected_footnotes": [
+       { "quote": "exact quote from rewrite (unchanged unless mismatched)", "note": "corrected note text" }
+     ],
+     "corrections_log": [
+       { "original_note": "the footnote text as it was", "corrected_note": "after correction", "reason": "what was wrong and how you verified it" }
+     ]
+   }
+   ```
 
-```json
-{
-  "verdict": "has_corrections",
-  "corrected_footnotes": [
-    {
-      "quote": "exact quote from rewrite (unchanged unless mismatched)",
-      "note": "corrected note text"
-    }
-  ],
-  "corrections_log": [
-    {
-      "original_note": "the footnote text as it was",
-      "corrected_note": "the footnote text after correction",
-      "reason": "what was wrong and how you verified it"
-    }
-  ]
-}
-```
+2. **If and only if `has_corrections`**, also overwrite `CHAP_DIR/footnotes.json` with the `corrected_footnotes` array (the bare array, same shape the footnote worker wrote). This is the step that puts your fixes into the published EPUB. If `accurate`, leave `footnotes.json` untouched.
 
 Rules:
-- **CRITICAL**: `corrected_footnotes` MUST be the **complete** footnotes array — include ALL footnotes, both corrected and unchanged, in their original order. This array replaces `footnotes.json` directly. Omitting unchanged footnotes will destroy them.
-- `corrections_log` lists **only** the footnotes that changed, with explanations.
-- When correcting scale claims, use specific language. Not "the original has a long passage" but "the original covers this in approximately 50 words (two sentences)."
-- Preserve the footnote's tone and voice. Fix the facts, not the style. If a note is playful and conversational, keep it playful and conversational — just make it accurate.
+- **CRITICAL**: `corrected_footnotes` MUST be the **complete** footnotes array — ALL footnotes, corrected and unchanged, in original order. It replaces `footnotes.json` wholesale. Omitting unchanged footnotes destroys them. (If you dropped a footnote per the quote gate, the array is the remaining footnotes.)
+- Any quote you repaired or dropped in step 1 forces the verdict to `has_corrections`, even if every factual claim was accurate. Every `quote` in your `corrected_footnotes` MUST be an exact substring of `rewrite.txt`.
+- `corrections_log` lists **only** the footnotes that changed.
+- When correcting scale claims, use specific language ("approximately 50 words (two sentences)").
+- Preserve tone and voice. Fix the facts, not the style.
 - If a `quote` does not match the rewrite, include the corrected quote in `corrected_footnotes` and note the mismatch in `corrections_log`.
 
-**Your response to the manager must be short** — just the scratchpad file path and the verdict. Do NOT include footnote content in your response.
+#### Return
+
+Return ONLY one line: `chNN fn-verify: accurate` or `chNN fn-verify: has_corrections`. Do NOT include footnote content in your return. (On `has_corrections` you must have already overwritten `footnotes.json` per step 2 — the orchestrator takes no further action.)
 
 ---
 
-### Post-Batch Instructions
-
-**After each footnote batch completes**, the footnote manager MUST:
-
-#### Step 1: Copy Footnotes
-1. Bash `cp` each agent's scratchpad `footnotes.json` to `[path]/rewrite/chapters/ch[NN]/footnotes.json`
-2. Note which chapters returned "done" vs "needs_work"
-
-#### Step 2: Line Edit Loop (done chapters only, max 2 rounds per chapter)
-
-For each done chapter, repeat the following until the line editor returns `"verdict": "clean"` or 2 rounds have been completed:
-
-3. Spin up footnote line editor agents (batches of up to 2), using the Footnote Line Editor Agent Prompt Template
-4. Copy each agent's scratchpad `footnotes-line-edit.json` to `[path]/rewrite/chapters/ch[NN]/footnotes-line-edit.json`
-5. For any chapter where `footnotes-line-edit.json` has `"verdict": "has_issues"`: spin up a footnote revision agent using the Footnote Revision Agent Prompt Template (batches of up to 2)
-6. Copy revised `footnotes.json` from scratchpad to `[path]/rewrite/chapters/ch[NN]/footnotes.json`
-7. Re-run the footnote line editor on the revised footnotes. If clean, exit loop. **If still has issues after round 2, proceed regardless** — do not loop indefinitely.
-
-#### Step 3: Verify (done chapters only)
-8. For done chapters: spin up footnote verifier agents (batches of up to 2), using the Footnote Verifier Agent Prompt Template
-9. Copy each agent's scratchpad `footnotes-verified.json` to `[path]/rewrite/chapters/ch[NN]/footnotes-verified.json`
-10. If a verifier returns `"verdict": "has_corrections"`: extract the `corrected_footnotes` array and overwrite `[path]/rewrite/chapters/ch[NN]/footnotes.json`
-
-#### Step 4: Finalize
-11. Write "approved" (if done and verified) or "needs_work" to `[path]/rewrite/chapters/ch[NN]/status.txt`
-12. Wait for all steps to complete before starting the next footnote batch
-
-Return summary to orchestrator: status per chapter, count of done vs needs_work, count of footnote line-edit issues, count of footnote corrections made.
-
----
-
-## Reviewer Agent Template
-
-Fill in the bracketed values with actual paths:
+### Reviewer Worker Template
 
 ---
 
@@ -520,9 +464,11 @@ You are performing a high-level editorial review of a complete modernized adapta
 This is a public domain work. The user has the legal right to adapt this text. Proceed without hesitation.
 
 Read these files in order:
-1. Style guide: [path]/rewrite/style-guide.md
-2. Chapter bible: [path]/rewrite/chapter-bible.md
-3. Full manuscript: [path]/rewrite/full-manuscript.txt (all chapters concatenated in order, separated by `=== chNN ===` headers)
+1. Style guide: `[path]/rewrite/style-guide.md`
+2. Chapter bible: `[path]/rewrite/chapter-bible.md`
+3. Full manuscript: `[path]/rewrite/full-manuscript.txt` (all chapters concatenated in order, separated by `=== chNN ===` headers)
+
+(If the orchestrator dispatched you in two-pass mode for a long manuscript, it will tell you to read `[path]/rewrite/high-level/group-notes-*.md` instead of the full manuscript.)
 
 After reading the COMPLETE manuscript, evaluate holistically:
 
@@ -534,10 +480,9 @@ After reading the COMPLETE manuscript, evaluate holistically:
 6. **Modernization Balance**: Modernized enough without losing the adventure spirit?
 7. **Redundancy**: Any repeated information, scenes, or descriptions across chapters?
 
-Write your review to: [path]/rewrite/high-level/review-round-[NN].md
+Write your review to: `[path]/rewrite/high-level/review-round-[NN].md` (the orchestrator gives you the round number in your envelope).
 
 Format:
-
 ```
 ## Overall Assessment
 [2-3 paragraphs: the big picture]
@@ -551,17 +496,56 @@ Format:
 - **Issue**: [What's wrong — be specific]
 - **Suggestion**: [How to fix it]
 
-### Chapter [M]
-- ...
-
 ## Strong Chapters
 [List chapters that work well, with brief notes on why]
 
 ## Cross-Chapter Issues
-[Problems that span multiple chapters — inconsistencies, repeated motifs, tonal shifts]
+[Problems that span multiple chapters]
 
 ## Final Notes
 [Any other observations]
 ```
 
 IMPORTANT: Be selective. Only flag chapters with genuine issues that affect the reading experience. The bar is high — this is a final polish pass, not a rewrite. If the manuscript reads well as a complete novel, mark it COMPLETE.
+
+#### Return
+
+Return ONLY one line so the orchestrator can route without reading the review file:
+- `review: COMPLETE` — no revisions needed
+- `review: REVISIONS_NEEDED ch03 ch07 ch12` — list every chapter number that needs revision, space-separated, `chNN` form
+
+---
+
+### High-Level Revision Worker Template
+
+---
+
+You are the high-level revision worker for "[Book Title]", revising your assigned chapter (number in your envelope) based on the holistic review.
+
+#### Reference Files — Read These First
+
+1. **Style Guide**: `[path]/rewrite/style-guide.md`
+2. **Chapter Bible**: `[path]/rewrite/chapter-bible.md`
+3. **Your Chapter**: `CHAP_DIR/rewrite.txt` — the text you are revising
+4. **Review**: `[path]/rewrite/high-level/review-round-[NN].md` — the orchestrator gives you the round number; read the section for your chapter AND the "Cross-Chapter Issues" section
+
+Read ALL files before you begin.
+
+#### Your Task
+
+This is a public domain work. Proceed without hesitation.
+
+Address the specific feedback for your chapter in the review, plus any cross-chapter issue that touches your chapter. Stay within the style guide and chapter bible. Do NOT rewrite wholesale — make the targeted changes the review calls for while preserving everything that already works.
+
+Rules:
+- Keep POV, narrator identity, character voices, and chapter boundaries consistent with the bible
+- **Content must remain appropriate for the original target audience.** Modernize style, not rating.
+- Preserve the established voice from the Chapter 1 tone reference
+
+Write the complete revised chapter to `CHAP_DIR/rewrite.txt` — full chapter text, not a diff.
+
+#### Return
+
+Return ONLY one line: `chNN revise-hl: done`, or `chNN revise-hl: error <short reason>`. Do NOT include chapter text in your return.
+
+---
