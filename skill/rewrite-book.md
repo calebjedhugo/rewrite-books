@@ -20,6 +20,7 @@ The config controls:
 - **`epub_source.type`**: `"local"` (user provides EPUB path) or `"calibre"` (fetch from remote calibre library via SSH)
 - **`upload`**: Whether to upload the finished EPUB to a calibre server
 - **`audiobook_sync`**: Whether to sync generated audiobooks to a remote server
+- **`publish_site`**: Whether to publish the finished EPUB to a public download site (a generated static site — see Phase 6.4)
 
 The `epub_utils_path` is auto-set by the install script to point at the repo's copy of `epub_utils.py`.
 
@@ -57,6 +58,9 @@ This pipeline generates many Agent dispatches and Bash/file calls. Add these to 
 
 **Only if using remote calibre (`epub_source.type: "calibre"` or `upload.enabled: true`):**
 - `Bash(ssh:*)`, `Bash(scp:*)` — remote operations
+
+**Only if publishing to a download site (`publish_site.enabled: true`):**
+- `Bash(rsync:*)` — deploy the generated site to the web host
 
 **Only for audiobook generation (Phase 7):**
 - `Bash(say:*)`, `Bash(afconvert:*)`, `Bash(ffmpeg:*)`, `Bash(ffprobe:*)` — TTS and audio conversion
@@ -238,7 +242,7 @@ Update `progress.md` after each round. (Reading the small review file once per r
 
 **Pre-build backstop (MANDATORY):** before dispatching assembly, run `python [path]/rewrite/gates.py footnote-substrings` one more time (Phase 5 may have changed text). If any chapter reports `MISMATCH`, fix it (re-dispatch footnote-verify) before building — a mismatch here means that footnote is silently dropped from the published EPUB. The assembly agent must **report any unmatched footnotes as an error in its return, not drop them silently**; if it reports misses, treat that as a failed build and resolve before finalizing.
 
-**How to dispatch:** Read `~/.claude/commands/rewrite-book/assembly.md` and pass its full contents to the Agent, filling in the book title, working directory, author, **and the config values** (`epub_utils_path`, upload settings).
+**How to dispatch:** Read `~/.claude/commands/rewrite-book/assembly.md` and pass its full contents to the Agent, filling in the book title, working directory, author, **and the config values** (`epub_utils_path`, `upload` settings, and `publish_site` settings if enabled).
 
 ```
 Tool: Agent
@@ -247,7 +251,7 @@ model: "sonnet"
 prompt: [Contents of assembly.md, filled in with book title, working directory, author, and config values]
 ```
 
-The assembly agent handles: EPUB rebuild (using epub-utils) and repackaging. If upload is configured, it also handles calibre upload and KEPUB conversion. It returns file sizes and upload confirmation (if applicable).
+The assembly agent handles: EPUB rebuild (using epub-utils) and repackaging. If `upload` is configured, it also handles calibre upload and KEPUB conversion. If `publish_site` is configured, it also publishes the finished EPUB to the public download site (Phase 6.4). It returns file sizes, upload confirmation (if applicable), and the published URL (if applicable).
 
 ---
 
@@ -300,7 +304,7 @@ Each agent returns a concise verdict. If any reports a serious problem (hollow r
 
 ## Phase 9: Final Report
 
-Summarize: chapters processed, iteration rounds needed, word-count comparison (original vs rewritten via `wc -w`), calibre upload status, audiobook file size/duration/Pi sync, **and the Phase 8 audit outcome** (deterministic `ALL-CLEAR` + the delegated agents' verdicts). Include the full path to the rewrite directory and final EPUB.
+Summarize: chapters processed, iteration rounds needed, word-count comparison (original vs rewritten via `wc -w`), calibre upload status, website publish status (the live URL, if `publish_site` is enabled), audiobook file size/duration/Pi sync, **and the Phase 8 audit outcome** (deterministic `ALL-CLEAR` + the delegated agents' verdicts). Include the full path to the rewrite directory and final EPUB.
 
 Ask if they'd like to read specific chapters, make targeted edits, or verify in calibre-web. Recommend BookPlayer app for M4B playback on iPhone.
 

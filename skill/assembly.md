@@ -110,3 +110,28 @@ ssh <upload-ssh> "ebook-convert '/tmp/<filename>.epub' '/tmp/<filename>.kepub.ep
 Then register the KEPUB format manually (since `calibredb` normalizes `.kepub.epub` to `.epub`). This requires adding the KEPUB format entry to `metadata.db` on the remote server.
 
 **Note:** Clearing Kobo sync state is only needed when **republishing** (replacing an EPUB the Kobo has already synced). For first-time uploads, the standard upload + KEPUB conversion is sufficient.
+
+### 6.4 Publish to Download Site (Optional)
+
+**Only run this if the orchestrator tells you `publish_site` is enabled.** Skip otherwise.
+
+If enabled, the orchestrator provides three config values:
+- `<publish-site-dir>` — a local directory holding a **generated** static download site. It contains a `build.py` with an `add` command that copies the EPUB in, extracts the cover image from the EPUB, upserts a manifest entry (idempotent by slug), and regenerates the site's `index.html`.
+- `<publish-deploy-target>` — the rsync destination for the generated site (e.g. `user@host:/var/www/<site>/`).
+- `<publish-base-url>` — the public URL, for reporting.
+
+1. Add (or update) this book in the site and regenerate it:
+   ```bash
+   python "<publish-site-dir>/build.py" add \
+     --epub "<local-epub>" \
+     --title "<Book Title>" \
+     --author "<Author>"
+   ```
+   Pass the **clean display title** (no "(rewritten)" suffix) and the author. Re-running for a title already on the shelf replaces its entry rather than duplicating it.
+
+2. Deploy the regenerated site:
+   ```bash
+   rsync -avz --delete "<publish-site-dir>/" "<publish-deploy-target>"
+   ```
+
+3. Report the live URL (`<publish-base-url>`) back to the orchestrator so it can surface it in the final report. Do not treat a publish failure as a build failure — the EPUB is already finalized; report the error and continue.

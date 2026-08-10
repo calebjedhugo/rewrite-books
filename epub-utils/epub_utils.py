@@ -459,17 +459,61 @@ def validate_chapter_map(build_subdir="epub-build"):
     return {"valid": valid, "errors": errors, "warnings": warnings}
 
 
+# XHTML (application/xhtml+xml) predefines only the five XML entities, so a
+# raw front-matter.html using named typographic entities makes strict readers
+# (Kobo) fail to parse the page. Map the common ones to literal characters.
+_FM_ENTITY_MAP = {
+    "&mdash;": "—", "&ndash;": "–", "&hellip;": "…",
+    "&nbsp;": " ", "&rsquo;": "’", "&lsquo;": "‘",
+    "&ldquo;": "“", "&rdquo;": "”", "&amp;mdash;": "—",
+}
+
+
+def _find_pg_element_span(content, elem_id):
+    """Return (start, end) of the <section>/<div> whose id == elem_id.
+
+    PG's ebookmaker emits the header/footer as either a <section> or a <div>,
+    and the block nests same-name tags, so this walks tag depth rather than
+    using a naive non-greedy regex (which would stop at the first inner close).
+    Returns None if no element with that exact id is found.
+    """
+    open_re = re.compile(
+        rf'<(section|div)\b[^>]*\bid="{re.escape(elem_id)}"[^>]*?(/?)>',
+        re.IGNORECASE,
+    )
+    m = open_re.search(content)
+    if not m:
+        return None
+    if m.group(2) == "/":            # self-closing opening tag, no body
+        return (m.start(), m.end())
+    tag = m.group(1)
+    tok = re.compile(rf'<(/?){tag}\b[^>]*?(/?)>', re.IGNORECASE)
+    depth = 1
+    for t in tok.finditer(content, m.end()):
+        if t.group(1) == "/":        # closing tag
+            depth -= 1
+        elif t.group(2) != "/":      # opening (non-self-closing) tag
+            depth += 1
+        if depth == 0:
+            return (m.start(), t.end())
+    return None
+
+
 def replace_pg_boilerplate(build_dir, front_matter_path, opf_path,
                            pg_header_id="pg-header",
                            pg_footer_idref="pg-footer"):
     """Replace Project Gutenberg boilerplate with custom front matter.
 
-    Scans XHTML files in build_dir for a <section> with the given pg_header_id,
-    replaces it with custom front matter, and removes the PG footer from the
-    OPF spine.
+    Scans content files in build_dir for the element with the given
+    pg_header_id, replaces it with custom front matter, and removes the PG
+    footer from the OPF spine.
+
+    Handles the two PG ebookmaker layouts seen in the wild: the header as a
+    <section id="pg-header"> in *.xhtml files, OR as a <div id="pg-header">
+    in *.html/*.htm files (newer ebookmaker). Both are matched.
 
     Supports two front matter formats:
-    - .html: inserted as raw HTML (must be valid XHTML fragment)
+    - .html: inserted as raw XHTML fragment (named entities are normalized)
     - .txt: paragraphs separated by blank lines, auto-wrapped in <section>/<p> tags
 
     Args:
@@ -486,6 +530,8 @@ def replace_pg_boilerplate(build_dir, front_matter_path, opf_path,
     # Build front matter HTML
     if front_matter_path.endswith(".html"):
         fm_html = raw
+        for ent, ch in _FM_ENTITY_MAP.items():
+            fm_html = fm_html.replace(ent, ch)
     else:
         paragraphs = [p.strip() for p in raw.split("\n\n") if p.strip()]
         parts = ['<section id="about-this-edition">', '<h2>About This Edition</h2>']
@@ -495,19 +541,22 @@ def replace_pg_boilerplate(build_dir, front_matter_path, opf_path,
         parts.append('</section>')
         fm_html = "\n".join(parts)
 
-    # Find and replace PG header in XHTML files
+    # Find and replace the PG header block across .xhtml/.html/.htm files
     replaced = False
-    for xhtml_file in sorted(glob.glob(os.path.join(build_dir, "*.xhtml"))):
+    files = []
+    for ext in ("*.xhtml", "*.html", "*.htm"):
+        files.extend(glob.glob(os.path.join(build_dir, ext)))
+    for xhtml_file in sorted(set(files)):
         with open(xhtml_file, "r", encoding="utf-8") as f:
             content = f.read()
 
-        pattern = re.compile(
-            rf'<section[^>]*\bid="{re.escape(pg_header_id)}"[^>]*>.*?</section>\s*(?:<pre\s*/>)?',
-            re.DOTALL
-        )
-        match = pattern.search(content)
-        if match:
-            content = content[:match.start()] + fm_html + "\n" + content[match.end():]
+        span = _find_pg_element_span(content, pg_header_id)
+        if span:
+            start, end = span
+            trail = re.match(r'\s*<pre\s*/>', content[end:])  # PG sometimes leaves this
+            if trail:
+                end += trail.end()
+            content = content[:start] + fm_html + "\n" + content[end:]
 
             # Remove Redactor's Note if present (PG-specific boilerplate)
             content = re.sub(
@@ -524,7 +573,7 @@ def replace_pg_boilerplate(build_dir, front_matter_path, opf_path,
             break
 
     if not replaced:
-        print(f"WARNING: Could not find section with id=\"{pg_header_id}\" in any XHTML file")
+        print(f"WARNING: Could not find element with id=\"{pg_header_id}\" in any content file")
 
     # Remove PG footer from OPF spine
     if pg_footer_idref:

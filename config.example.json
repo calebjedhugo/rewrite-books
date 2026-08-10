@@ -16,5 +16,11 @@
     "enabled": false,
     "ssh_host": "",
     "remote_path": ""
+  },
+  "publish_site": {
+    "enabled": false,
+    "site_dir": "",
+    "deploy_target": "",
+    "base_url": ""
   }
 }
