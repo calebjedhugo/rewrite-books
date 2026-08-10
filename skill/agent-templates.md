@@ -46,6 +46,8 @@ Workers MUST return exactly one line. The orchestrator routes on it and never ne
 | footnote-line-edit | `chNN fn-line-edit: clean` | `chNN fn-line-edit: has_issues` |
 | footnote-revise | `chNN fn-revise: done` | `chNN fn-revise: error <reason>` |
 | footnote-verify | `chNN fn-verify: accurate` | `chNN fn-verify: has_corrections` |
+| footnote-fact-check | `fact-check chNN-chNN: clean` | `fact-check chNN-chNN: N defects` |
+| footnote-fact-fix | `chNN fact-fix: applied k/n` + final note text | `chNN fact-fix: rejected <finding> <why>` |
 | reviewer | `review: COMPLETE` | `review: REVISIONS_NEEDED ch03 ch07 ch12` |
 | revise-highlevel | `chNN revise-hl: done` | `chNN revise-hl: error <reason>` |
 
@@ -54,6 +56,7 @@ The detailed payloads (`line-edit.json`, `footnotes.json`, `footnotes-line-edit.
 ### Model map (orchestrator sets `model` per dispatch)
 
 - rewrite, revise, footnote, footnote-revise, revise-highlevel → **opus**
+- footnote-fact-check, footnote-fact-fix → **opus** (factual judgment; do not downgrade)
 - line-edit, footnote-line-edit, footnote-verify → **sonnet**
 - reviewer → **opus**
 
@@ -74,6 +77,8 @@ The setup agent fills each template below (substitute `[Book Title]` and the abs
 | `footnote-line-edit.md` | Footnote Line Editor Worker Template |
 | `footnote-revise.md` | Footnote Revision Worker Template |
 | `footnote-verify.md` | Footnote Verifier Worker Template |
+| `footnote-fact-check.md` | Footnote Fact-Check Worker Template |
+| `footnote-fact-fix.md` | Footnote Fact-Fix Worker Template |
 | `reviewer.md` | Reviewer Worker Template |
 | `revise-highlevel.md` | High-Level Revision Worker Template |
 
@@ -452,6 +457,52 @@ Rules:
 #### Return
 
 Return ONLY one line: `chNN fn-verify: accurate` or `chNN fn-verify: has_corrections`. Do NOT include footnote content in your return. (On `has_corrections` you must have already overwritten `footnotes.json` per step 2 — the orchestrator takes no further action.)
+
+---
+
+### Footnote Fact-Check Worker Template
+
+You are fact-checking the editorial footnotes for "[Book Title]", chapters [CHAPTER LIST].
+
+Read for each assigned chapter: `CHAP_DIR/footnotes.json` (the shipped array), plus `original.txt` and `rewrite.txt` for context.
+
+**Why this exists:** `gates.py footnote-substrings` proves a footnote is *anchored* to real text. NOTHING proves the note is *true*. You are the only check on factual accuracy, and these notes ship in a published EPUB.
+
+For EVERY footnote in your chapters, check:
+
+1. **Truth.** Is each historical, biographical, linguistic, geographic, or scientific claim correct? Flag anything wrong, garbled, or anachronistic.
+2. **Claims about the source text.** This is the highest-yield category — notes that say "in the original, X happens" or "character Y says Z" are frequently WRONG. Verify every such claim against `original.txt` / `rewrite.txt` by actually locating the passage. Check *who says what*: misattributing a line to the wrong character is the single most common defect.
+3. **Quotation accuracy.** Any quoted original text must be verbatim. Check word by word.
+4. **Spoilers.** Does the note reveal a mystery's solution, a death, or a twist before the text reaches it? Note position matters — a true statement placed too early is still a defect.
+5. **Overstatement.** Unverifiable superlatives ("the most misread word") and contested claims asserted as settled fact are defects. Flag as `soften`.
+
+You have NO web access. Mark anything you cannot verify from your own knowledge as UNCERTAIN rather than guessing. A confident wrong verdict is worse than an admitted gap.
+
+**Do NOT edit any file.** Write your findings to `[path]/rewrite/high-level/fact-check-[CHAPTER RANGE].md` as a list. For each defect: chapter, the anchoring `quote` (abbreviated), what is wrong, and the specific corrected wording it should use.
+
+#### Return
+
+Return ONLY one line: `fact-check chNN-chNN: clean` or `fact-check chNN-chNN: N defects`.
+
+---
+
+### Footnote Fact-Fix Worker Template
+
+You are applying fact-check corrections to footnotes for "[Book Title]", chapter [NN].
+
+Read `[path]/rewrite/high-level/fact-check-*.md` for your chapter's defects, plus `CHAP_DIR/footnotes.json`, `original.txt`, and `rewrite.txt`.
+
+**HARD RULE: edit `note` text ONLY. NEVER change a `quote` field** — quotes are gated as exact substrings of `rewrite.txt` and must stay byte-identical. Do not add or remove footnotes. Preserve JSON structure.
+
+**Verify the premise before you apply the fix.** A fact-check finding is a claim, not a fact. If a finding says "the original states X," go read the original and confirm it before rewriting the note around it. A correction built on a wrong premise makes the note *less* true — this has actually happened. If a finding is wrong, do not apply it; say so in your return.
+
+**Check for sibling instances.** If a defect is a factual error (e.g. the wrong character named), grep the other notes in the same chapter for the same error. Fixing one instance and leaving its twin standing is a known failure of this step.
+
+After editing: confirm the file is valid JSON and every `quote` is still an exact substring of `rewrite.txt`. Then **re-sync `footnotes-verified.json`**: it wraps the array as `corrected_footnotes`, and if left alone it holds the superseded WRONG text, which a later resume can restore. Set `corrected_footnotes` to the new array and append a line to `corrections_log`.
+
+#### Return
+
+Return one line — `chNN fact-fix: applied k/n` (or `chNN fact-fix: rejected <finding> <why>`) — **followed by the full final text of each corrected note**, so the orchestrator can check the wording directly without opening files.
 
 ---
 

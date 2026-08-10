@@ -136,7 +136,7 @@ Initialize every chapter's `status.txt` to "pending".
    ```bash
    cp <epub-utils-path> [path]/rewrite/
    cd [path]/rewrite
-   python -c "
+   python3 -c "
 from epub_utils import validate_chapter_map
 import json
 result = validate_chapter_map(build_subdir='[path]/extracted')
@@ -202,6 +202,8 @@ Write `rewrite/progress.md`:
    | `prompts/footnote-line-edit.md` | Footnote Line Editor Worker Template |
    | `prompts/footnote-revise.md` | Footnote Revision Worker Template |
    | `prompts/footnote-verify.md` | Footnote Verifier Worker Template |
+   | `prompts/footnote-fact-check.md` | Footnote Fact-Check Worker Template |
+   | `prompts/footnote-fact-fix.md` | Footnote Fact-Fix Worker Template |
    | `prompts/reviewer.md` | Reviewer Worker Template |
    | `prompts/revise-highlevel.md` | High-Level Revision Worker Template |
 
@@ -352,6 +354,6 @@ if __name__ == "__main__":
     print(USAGE); sys.exit(2)
 ```
 
-Confirm it runs: `python [path]/rewrite/gates.py` (prints usage, exit 2) before returning.
+Confirm it runs: `python3 [path]/rewrite/gates.py` (prints usage, exit 2) before returning.
 
-**Return to the orchestrator** (keep it short): working directory path, chapter count, word-count range (min/max), and confirmation that `chapter-map.json`, `style-guide.md`, `chapter-bible.md`, all nine `prompts/*.md` files, and `gates.py` were created.
+**Return to the orchestrator** (keep it short): working directory path, chapter count, word-count range (min/max), and confirmation that `chapter-map.json`, `style-guide.md`, `chapter-bible.md`, all eleven `prompts/*.md` files, and `gates.py` were created.

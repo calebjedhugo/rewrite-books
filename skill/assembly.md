@@ -21,7 +21,7 @@ These instructions are for the Phase 6 Task agent. The orchestrator reads this f
    ```bash
    cd [path]/rewrite
    # Check 1: Validate chapter-map.json schema + file references
-   python -c "
+   python3 -c "
 from epub_utils import validate_chapter_map
 import json
 result = validate_chapter_map()
@@ -31,7 +31,7 @@ print('Validation PASSED')
 "
 
    # Check 2: Dry-run heading detection for all chapters
-   python -c "
+   python3 -c "
 from epub_utils import build_rewritten_epub
 import json
 result = build_rewritten_epub('.', dry_run=True)
@@ -49,7 +49,7 @@ print('Dry run PASSED')
 
    ```bash
    cd [path]/rewrite
-   python -c "from epub_utils import build_rewritten_epub; result = build_rewritten_epub('.'); print(result)"
+   python3 -c "from epub_utils import build_rewritten_epub; result = build_rewritten_epub('.'); print(result)"
    ```
 
    Check the output for errors. If the function reports chapters it couldn't find headings for, the `_metadata` in chapter-map.json may need adjustment (wrong `heading_tag`, missing `heading_id`, etc.). Fix and re-run.
@@ -122,7 +122,7 @@ If enabled, the orchestrator provides three config values:
 
 1. Add (or update) this book in the site and regenerate it:
    ```bash
-   python "<publish-site-dir>/build.py" add \
+   python3 "<publish-site-dir>/build.py" add \
      --epub "<local-epub>" \
      --title "<Book Title>" \
      --author "<Author>"

@@ -52,7 +52,7 @@ This pipeline generates many Agent dispatches and Bash/file calls. Add these to 
 **Always needed:**
 - `Bash(cp *)`, `Bash(cp -r *)` — file copying
 - `Bash(unzip:*)`, `Bash(zip *)` — EPUB handling
-- `Bash(python *)`, `Bash(python -c:*)` — extraction/build/gate scripts
+- `Bash(python3:*)`, `Bash(python *)`, `Bash(python -c:*)` — extraction/build/gate scripts. **Write `python3` in every command.** On many systems (macOS in particular) bare `python` is not on PATH outside an activated venv, and this skill never activates one — every `gates.py` call fails with `command not found` if you write `python`.
 - `Bash(wc:*)`, `Bash(mkdir:*)`, `Bash(rm:*)` — filesystem ops
 - `Write(<working_dir>/**)`, `Edit(<working_dir>/**)` — project file writes (match your `working_dir`, e.g. `~/Documents/**`)
 
@@ -114,9 +114,9 @@ Before starting, report to the user the whole-pipeline estimate: chapter count, 
 One revise-cycle for a set of chapters:
 
 1. **Line-edit:** dispatch line-edit workers (sonnet). Collect returns (`clean` / `has_issues`).
-2. **JSON gate:** run `python [path]/rewrite/gates.py json-valid …` on **every** chapter's `line-edit.json` in this cycle — NOT only the `has_issues` ones. A worker can return `clean` while having written a malformed file (this is exactly the ch15-class bug from the prior run); validating only `has_issues` files would miss it. Any `BAD` → re-dispatch that line-edit worker. Repeat until all `OK`.
+2. **JSON gate:** run `python3 [path]/rewrite/gates.py json-valid …` on **every** chapter's `line-edit.json` in this cycle — NOT only the `has_issues` ones. A worker can return `clean` while having written a malformed file (this is exactly the ch15-class bug from the prior run); validating only `has_issues` files would miss it. Any `BAD` → re-dispatch that line-edit worker. Repeat until all `OK`.
 3. **Revise:** for `has_issues` chapters only, dispatch revise workers (opus). Each returns `revise: applied k/n`.
-4. **Apply gate (MANDATORY):** run `python [path]/rewrite/gates.py revise-applied ch{NN} …` for every chapter just revised. Read the tiny table.
+4. **Apply gate (MANDATORY):** run `python3 [path]/rewrite/gates.py revise-applied ch{NN} …` for every chapter just revised. Read the tiny table.
    - `APPLIED` → fix landed, chapter advances.
    - `NOT-APPLIED (j/n flagged quotes still present)` → the revise worker did not actually change the flagged text. **Re-dispatch the revise worker for that chapter** (up to 2 retries). If still `NOT-APPLIED` after 2 retries, log it in `progress.md` and move on — do not silently accept it.
 
@@ -141,7 +141,15 @@ Process ch02…chN as waves across the whole book, batching up to 4 workers per 
 - **Wave A — rewrite:** dispatch rewrite workers (opus) for all pending chapters, 4 at a time. Collect `chNN rewrite: done`.
 - **Waves B–… — gated revise-cycles:** run the gated revise-cycle (above) across all rewritten chapters, batching workers 4 at a time within each step. Run up to 2 cycles; the `revise-applied` gate after every revise wave is mandatory and chapters failing it are re-dispatched before you move on.
 
-Track per-chapter state in your own working notes (chapter number → last completed step, last gate result). Do NOT read chapter files to determine state — the one-line returns plus the gate tables are authoritative during a live run.
+Track per-chapter state in your own working notes (chapter number → last completed step, last gate result). Do NOT read chapter *contents* to determine state — the one-line returns plus the gate tables are authoritative during a live run.
+
+**EXISTENCE CHECK AFTER EVERY FILE-PRODUCING WAVE (MANDATORY, cheap).** A worker can die mid-write on an API error and return partial text — or nothing — while the wave *looks* like it completed. On one run **all four workers in a rewrite wave died on a connection error and wrote no files**; the failure was invisible in the returns and would have shipped a book missing four chapters. After each wave, confirm the expected outputs exist:
+
+```bash
+cd [path]/rewrite/chapters && for c in ch*; do [ -s $c/rewrite.txt ] && echo "$c $(wc -w < $c/rewrite.txt)" || echo "$c MISSING"; done
+```
+
+This reads file *sizes*, not contents — it does not violate the leanness rule. Re-dispatch anything `MISSING` or suspiciously short before advancing the wave. Treat an agent result containing "API Error" or "terminated early" as **failed regardless of what text it returned**.
 
 Workers write their own outputs. After Phase 1, every ch02+ has a `rewrite.txt` whose Phase-1 flagged quotes have been verified gone (or logged as unresolved). (Status.txt is written in Phase 2.)
 
@@ -155,16 +163,27 @@ After Phase 1 completes, **update `progress.md`** with REAL state: per-chapter c
 
 Same wave model, using `prompts/footnote.md`, `prompts/footnote-line-edit.md`, `prompts/footnote-revise.md`, `prompts/footnote-verify.md`. Run for all chapters that have an approved/complete `rewrite.txt`.
 
-- **Wave E — footnote:** dispatch footnote workers (opus), 4 at a time. Split returns into `done` vs `needs_work`. A `needs_work` chapter means the rewrite is too broken to annotate — set it aside for Phase 3. Then run `python [path]/rewrite/gates.py json-valid …/footnotes.json …` on the `done` chapters; re-dispatch any `BAD`.
+- **Wave E — footnote:** dispatch footnote workers (opus), 4 at a time. Split returns into `done` vs `needs_work`. A `needs_work` chapter means the rewrite is too broken to annotate — set it aside for Phase 3. Then run `python3 [path]/rewrite/gates.py json-valid …/footnotes.json …` on the `done` chapters; re-dispatch any `BAD`.
 - **Wave F — footnote line-edit (round 1):** for `done` chapters, dispatch footnote-line-edit workers (sonnet). Split `clean` vs `has_issues`. (JSON-gate the resulting `footnotes-line-edit.json` files; re-dispatch any `BAD`.)
 - **Wave G — footnote revise:** for `has_issues` chapters, dispatch footnote-revise workers (opus).
 - **Wave H — footnote line-edit (round 2):** re-run on revised chapters; proceed regardless after this round (max 2 rounds).
 - **Wave I — footnote verify:** dispatch footnote-verify workers (sonnet) for all `done` chapters. The verifier validates every `quote` is an exact substring of `rewrite.txt` (repairing or dropping mismatches) and writes the corrected array straight to `footnotes.json` — so a `has_corrections` return needs no orchestrator action beyond noting it.
-- **Wave J — substring gate (MANDATORY):** run `python [path]/rewrite/gates.py footnote-substrings`. Every chapter must be `OK` or `SKIP`. Any `MISMATCH` line means a footnote quote will be silently dropped from the EPUB — re-dispatch that chapter's footnote-verify worker until the gate is clean, **max 2 re-dispatches per chapter**; on the 3rd attempt dispatch a footnote-verify pass instructed to DROP the unmatchable footnote(s) rather than re-anchor (the verifier template permits dropping), which guarantees convergence. **Do not proceed to Phase 6 with any MISMATCH outstanding.** (The prior run shipped 5 broken quotes because nothing enforced this.)
+- **Wave J — substring gate (MANDATORY):** run `python3 [path]/rewrite/gates.py footnote-substrings`. Every chapter must be `OK` or `SKIP`. Any `MISMATCH` line means a footnote quote will be silently dropped from the EPUB — re-dispatch that chapter's footnote-verify worker until the gate is clean, **max 2 re-dispatches per chapter**; on the 3rd attempt dispatch a footnote-verify pass instructed to DROP the unmatchable footnote(s) rather than re-anchor (the verifier template permits dropping), which guarantees convergence. **Do not proceed to Phase 6 with any MISMATCH outstanding.** (The prior run shipped 5 broken quotes because nothing enforced this.)
 
-Note — accepted asymmetry: the footnote *line-edit/revise* loop (Waves F–H) fixes the footnote *note prose* and is NOT apply-gated the way chapter revises are (only quote integrity is gated, via Wave J). Footnote prose is low-stakes relative to the book text, so this is a deliberate scope choice, not an oversight.
+- **Wave K — footnote FACT-CHECK (MANDATORY, full coverage):** dispatch footnote-fact-check workers (opus, `prompts/footnote-fact-check.md`), **2–3 chapters each, covering every chapter — no sampling.** Collect `clean` / `N defects`.
+- **Wave L — fact-fix + read-back:** for chapters with defects, dispatch footnote-fact-fix workers (opus, `prompts/footnote-fact-fix.md`), 4 at a time. Each returns its count **plus the full final text of every corrected note**. **Read those notes in your return — they are short, and this is the one place the orchestrator must look at content.** Then re-run `gates.py json-valid` and `gates.py footnote-substrings` on the fixed chapters.
 
-**Finalize status:** after Wave J passes, the orchestrator writes each chapter's `status.txt` itself with the **Write tool** (tiny write: `approved` or `needs_work`) — it already knows every chapter's outcome from the one-line returns and gate tables, so no extra dispatch is needed. `approved` = footnote done + verified + substring-clean; `needs_work` = footnote worker returned `needs_work`.
+**Why Wave K is not optional.** `footnote-substrings` proves a footnote is *anchored*; nothing else proves it is *true*. On a 12-chapter run with 70 footnotes the observed error rate was **~1 in 9** — including a note that falsely attributed a racial slur to a character, a note that both spoiled the mystery a third of the way in and inverted the plot, and several confident claims about "what the original says" that the original does not say. Every one passed every gate and shipped. A sampled audit at Phase 8 caught some; the rest required three extra EPUB builds to fix after publication.
+
+**Two failure modes to expect in Wave L, both observed:**
+1. **A fact-check finding can itself be wrong.** On that run a finding claimed only one passage was quoted directly from a source; there were three. The false premise was handed to the fixer and became a *new* error in the note. The fact-fix template tells workers to verify the premise first — take a `rejected` return seriously rather than re-dispatching until it complies.
+2. **Sibling instances survive.** A fixer corrected an error in one note and left the identical error standing in the adjacent note. Grep the chapter for the same error after fixing.
+
+Note — accepted asymmetry: the footnote *line-edit/revise* loop (Waves F–H) fixes the footnote *note prose* for style and is NOT apply-gated the way chapter revises are. Factual accuracy is covered by Waves K–L; quote integrity by Wave J. Style is the only ungated dimension, which is the deliberate scope choice.
+
+**If Phase 5 revises any chapter, its footnotes are regenerated — so Waves K–L must be re-run for those chapters too.** Newly generated notes have never been fact-checked.
+
+**Finalize status:** after Waves J **and K–L** pass, the orchestrator writes each chapter's `status.txt` itself with the **Write tool** (tiny write: `approved` or `needs_work`) — it already knows every chapter's outcome from the one-line returns and gate tables, so no extra dispatch is needed. `approved` = footnote done + verified + substring-clean; `needs_work` = footnote worker returned `needs_work`.
 
 After Phase 2, **update `progress.md`** with real per-chapter outcomes (verify verdicts + substring-gate result).
 
@@ -240,7 +259,7 @@ Update `progress.md` after each round. (Reading the small review file once per r
 
 ## Phase 6: Reassemble EPUB & Upload to Calibre
 
-**Pre-build backstop (MANDATORY):** before dispatching assembly, run `python [path]/rewrite/gates.py footnote-substrings` one more time (Phase 5 may have changed text). If any chapter reports `MISMATCH`, fix it (re-dispatch footnote-verify) before building — a mismatch here means that footnote is silently dropped from the published EPUB. The assembly agent must **report any unmatched footnotes as an error in its return, not drop them silently**; if it reports misses, treat that as a failed build and resolve before finalizing.
+**Pre-build backstop (MANDATORY):** before dispatching assembly, run `python3 [path]/rewrite/gates.py footnote-substrings` one more time (Phase 5 may have changed text). If any chapter reports `MISMATCH`, fix it (re-dispatch footnote-verify) before building — a mismatch here means that footnote is silently dropped from the published EPUB. The assembly agent must **report any unmatched footnotes as an error in its return, not drop them silently**; if it reports misses, treat that as a failed build and resolve before finalizing.
 
 **How to dispatch:** Read `~/.claude/commands/rewrite-book/assembly.md` and pass its full contents to the Agent, filling in the book title, working directory, author, **and the config values** (`epub_utils_path`, `upload` settings, and `publish_site` settings if enabled).
 
@@ -278,7 +297,7 @@ Before reporting success, confirm the run actually went according to plan. This 
 
 ### 8.1 Deterministic self-audit (orchestrator, MANDATORY)
 
-Run `python [path]/rewrite/gates.py audit`. It sweeps every gate across all chapters plus structural completeness, status-vs-gate consistency, and high-level-review currency, and prints a compact report ending in `AUDIT: ALL-CLEAR` or `AUDIT: FAILURES FOUND`.
+Run `python3 [path]/rewrite/gates.py audit`. It sweeps every gate across all chapters plus structural completeness, status-vs-gate consistency, and high-level-review currency, and prints a compact report ending in `AUDIT: ALL-CLEAR` or `AUDIT: FAILURES FOUND`.
 
 - **`ALL-CLEAR`** → mechanics verified; proceed to 8.2.
 - **`FAILURES FOUND`** → the run is NOT done, regardless of what `progress.md` says. Each failure line names what to fix, then re-audit:
@@ -296,7 +315,7 @@ The deterministic gates cannot judge whether the adversarial reviews *genuinely 
 
 1. **Engagement & realism:** sample 4–6 chapters; confirm the line-edit/footnote findings were genuine (not rubber-stamps), and that revisions actually improved the text. Flag tell-tale hollow-review signatures (e.g., near-universal first-pass `clean`, findings that quote nonexistent text).
 2. **Rewrite quality:** sample chapters incl. the ch01 anchor; assess prose quality, fidelity to plot/characters, age-appropriateness, tone consistency, over-trimming.
-3. **Footnote accuracy:** sample chapters; verify note claims against `original.txt`.
+3. **Footnote accuracy:** spot-check only — full coverage already happened in Phase 2 Waves K–L. If Waves K–L were skipped for any reason, **this is not a substitute**: go back and run them across every chapter before publishing. A sampled footnote audit tells you the error rate, not that the book is clean.
 
 Each agent returns a concise verdict. If any reports a serious problem (hollow review, fabrication, fidelity break, tone drift), **surface it to the user in the report** — do not bury it. For a trivial re-run the user can waive 8.2, but 8.1 is never skipped.
 
@@ -317,9 +336,9 @@ Ask if they'd like to read specific chapters, make targeted edits, or verify in 
 1. Check if the working directory already exists.
 2. Confirm `[path]/rewrite/prompts/` and `[path]/rewrite/gates.py` exist; if either is missing (e.g., interrupted mid-Phase-0, or the run predates the gates), re-run the relevant setup steps only (§0.6 to compile prompts, §0.7 to write `gates.py`).
 3. **Trust the gates, not the prior run's narration.** `progress.md` and `status.txt` were written by a previous orchestrator and may claim work that never actually happened — this is not hypothetical: the first Robin Hood run marked all chapters `approved` while the gates show zero fixes were applied. So establish TRUE state by re-running the deterministic gates, not by reading status:
-   - `python [path]/rewrite/gates.py json-valid [path]/rewrite/chapters/ch*/line-edit.json` — any `BAD` chapter needs its line-edit re-run.
-   - `python [path]/rewrite/gates.py revise-applied <all chapters with a line-edit.json>` — any `NOT-APPLIED` or `ERROR` chapter has unapplied line-edit fixes; resume the Phase 1 gated revise-cycle for it.
-   - `python [path]/rewrite/gates.py footnote-substrings` — any `MISMATCH` chapter needs its footnotes re-verified (Phase 2 Wave I/J).
+   - `python3 [path]/rewrite/gates.py json-valid [path]/rewrite/chapters/ch*/line-edit.json` — any `BAD` chapter needs its line-edit re-run.
+   - `python3 [path]/rewrite/gates.py revise-applied <all chapters with a line-edit.json>` — any `NOT-APPLIED` or `ERROR` chapter has unapplied line-edit fixes; resume the Phase 1 gated revise-cycle for it.
+   - `python3 [path]/rewrite/gates.py footnote-substrings` — any `MISMATCH` chapter needs its footnotes re-verified (Phase 2 Wave I/J).
    A chapter is only truly done when its gates pass, regardless of what `status.txt` says. Rewrite a corrected `progress.md` from the gate results.
 4. For coarse "did this phase run at all" checks, you may also note which output files exist per chapter (`rewrite.txt`, `footnotes.json`, `footnotes-verified.json`) — existence only, never contents.
 5. Resume from the earliest phase the gates show as incomplete. Do NOT re-extract or re-fetch unless the working directory is missing. Do NOT re-rewrite chapters whose gates already pass.
@@ -334,6 +353,8 @@ Ask if they'd like to read specific chapters, make targeted edits, or verify in 
 - **CRITICAL — Gates over narration**: Quality gates are enforced by `[path]/rewrite/gates.py`, not by your own account of what happened. After every revise wave you MUST run `gates.py revise-applied` and re-dispatch any `NOT-APPLIED` chapter; before Phase 6 you MUST run `gates.py footnote-substrings` clean; JSON-writing waves are checked with `gates.py json-valid`. A worker returning `applied k/n` is a claim; the gate is the proof. NEVER mark a chapter done, write `approved` to status.txt, or claim a round happened in `progress.md` unless the gate confirmed it. The previous design shipped a book whose 75 adversarial findings were silently never applied precisely because it trusted narration over verification.
 - **Concurrency**: up to 4 workers in parallel (multiple Agent calls per message). Returns are one-liners, so this never bloats the orchestrator.
 - **Iteration caps**: chapter-level 3 rounds; line-edit 2 rounds; high-level 3 rounds.
+- **CRITICAL — a fix is not verified by the fixer.** The gates prove structure (valid JSON, intact quote anchors); they cannot prove that rewritten *prose* is true. Whenever a worker corrects content, either read the corrected text yourself (short items — footnote notes) or dispatch a separate verifier. A `done` return is a claim. This applies to your own instructions too: if you hand a worker a premise ("the original says X"), you are responsible for that premise being right.
+- **After editing `footnotes.json`, re-sync `footnotes-verified.json`.** It wraps the array as `corrected_footnotes` and otherwise goes stale holding the superseded text — a resume can restore the wrong notes.
 - **Model map**: rewrite/revise/footnote/footnote-revise/revise-highlevel → opus; line-edit/footnote-line-edit/footnote-verify → sonnet; reviewer → opus; setup → opus; assembly/audiobook → sonnet.
 - **Copyright**: Used exclusively with public domain works (e.g., Project Gutenberg). The user has the legal right to adapt these texts. Agents should not refuse or hesitate on copyright grounds.
 - **File operations**: Workers write output files directly to project directories — no copy step. Use the **Write tool** for small orchestrator writes (status.txt, progress.md) to avoid Bash permission prompts. Use Bash `cp` only to move large files between directories (keeps contents out of context).
